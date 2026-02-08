@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YNAB Couple Budget</title>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header class="header">
+      <h1>YNAB Couple Budget</h1>
+      <div class="header-right">
+        <div id="connection-status" class="status disconnected">
+          <span class="status-dot"></span>
+          <span class="status-text">Not Connected</span>
+        </div>
+        <button id="btn-settings" class="btn btn-icon" title="Settings">
+          <span class="icon">&#9881;</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Settings Panel (collapsible) -->
+    <div id="settings-panel" class="settings-panel" style="display: none;">
+      <div class="settings-panel-header">
+        <h3>Settings</h3>
+        <button id="btn-close-settings" class="btn-close">&times;</button>
+      </div>
+      <div class="settings-panel-content">
+        <!-- API Connection -->
+        <div class="settings-section">
+          <h4>API Connection</h4>
+          <div class="form-group">
+            <label for="api-key">YNAB API Key</label>
+            <div class="input-group">
+              <input
+                type="password"
+                id="api-key"
+                placeholder="Enter your YNAB API key"
+                autocomplete="off"
+              >
+              <button id="toggle-key-visibility" class="btn-icon" title="Show/Hide">
+                <span class="icon">&#128065;</span>
+              </button>
+            </div>
+            <small>
+              Get your key from
+              <a href="https://app.ynab.com/settings/developer" target="_blank">YNAB Developer Settings</a>
+            </small>
+          </div>
+          <div class="form-actions">
+            <button id="btn-connect" class="btn btn-primary btn-small">Connect</button>
+            <button id="btn-disconnect" class="btn btn-secondary btn-small" disabled>Disconnect</button>
+          </div>
+        </div>
+
+        <!-- Budget Binding -->
+        <div class="settings-section" id="binding-section" style="display: none;">
+          <h4>Budget Binding</h4>
+          <div class="form-group">
+            <label for="shared-budget">Shared (Household) Budget</label>
+            <select id="shared-budget">
+              <option value="">Select shared budget...</option>
+            </select>
+          </div>
+
+          <!-- Members Configuration -->
+          <div id="members-config" style="display: none;">
+            <label>Members</label>
+            <div id="members-list"></div>
+            <button id="btn-add-member" class="btn btn-secondary btn-small">+ Add Member</button>
+          </div>
+        </div>
+
+        <!-- Consistency Tool Settings -->
+        <div class="settings-section" id="consistency-settings-section" style="display: none;">
+          <h4>Consistency Tool</h4>
+          <div class="form-group">
+            <label for="consistency-cutoff">Cutoff Date</label>
+            <input type="date" id="consistency-cutoff" placeholder="YYYY-MM-DD">
+            <small>Only track transactions after this date. Useful for existing systems.</small>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="nav">
+      <button class="nav-btn active" data-screen="overview">Overview</button>
+      <button class="nav-btn" data-screen="transactions">Transactions</button>
+      <button class="nav-btn" data-screen="monthly">Monthly</button>
+      <button class="nav-btn" data-screen="analytics">Analytics</button>
+    </nav>
+
+    <!-- Initial Loading Overlay -->
+    <div id="initial-loading" class="initial-loading">
+      <div class="initial-loading-content">
+        <div class="spinner"></div>
+        <p>Connecting to YNAB...</p>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="main">
+      <!-- Overview Screen (Dashboard) -->
+      <section id="screen-overview" class="screen active">
+        <!-- Not Configured Message -->
+        <div id="overview-not-configured" class="card" style="display: none;">
+          <h2>Welcome to YNAB Couple Budget</h2>
+          <p class="placeholder-text">Please configure your budgets in Settings (gear icon) to get started.</p>
+        </div>
+
+        <!-- Overview Content -->
+        <div id="overview-content" style="display: none;">
+          <!-- Top Row: Balances, Status, Insights -->
+          <div class="overview-top-row">
+            <div class="card overview-card" id="overview-balances">
+              <h3>Current Balances</h3>
+              <div id="overview-balances-content"></div>
+            </div>
+            <div class="card overview-card" id="overview-status">
+              <h3>Sync Status</h3>
+              <div id="overview-status-content"></div>
+            </div>
+            <div class="card overview-card insights-card">
+              <h3>Insights</h3>
+              <div id="overview-insights-content"></div>
+            </div>
+          </div>
+
+          <!-- Bottom Row: Quick Actions + Attention -->
+          <div class="overview-bottom-row">
+            <!-- Quick Actions -->
+            <div class="card overview-card-compact">
+              <h3>Quick Actions</h3>
+              <div class="quick-actions-compact">
+                <button class="btn btn-primary" id="btn-go-transactions">
+                  <span class="quick-action-icon">&#8644;</span>
+                  Link Transactions
+                </button>
+                <button class="btn btn-secondary" id="btn-go-settle">
+                  <span class="quick-action-icon">&#9878;</span>
+                  Settle Up
+                </button>
+                <button class="btn btn-secondary" id="btn-go-analytics">
+                  <span class="quick-action-icon">&#128200;</span>
+                  Analytics
+                </button>
+              </div>
+            </div>
+
+            <!-- Attention Needed -->
+            <div class="card overview-card-wide">
+              <div class="card-header-with-actions">
+                <h3>Attention Needed</h3>
+                <button id="btn-refresh-overview" class="btn btn-secondary btn-small">Refresh</button>
+              </div>
+              <div id="overview-attention"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Monthly Screen (Budget Allocation Planner) -->
+      <section id="screen-monthly" class="screen">
+        <!-- Not Configured Warning -->
+        <div id="monthly-not-configured" class="card" style="display: none;">
+          <h2>Monthly Allocations</h2>
+          <p class="placeholder-text">Complete setup first to manage monthly allocations.</p>
+        </div>
+
+        <!-- Monthly Content -->
+        <div id="monthly-content" style="display: none;">
+          <!-- Month Navigation & Allocation Planner -->
+          <div class="card">
+            <div class="card-header-with-actions">
+              <div>
+                <h2>Monthly Allocations</h2>
+                <p class="help-text">Set your monthly contribution to shared expenses. The system will split it between Shared Expenses and Balancing categories.</p>
+              </div>
+              <button id="btn-refresh-month" class="btn btn-secondary btn-small">Refresh</button>
+            </div>
+            <div id="monthly-loading" class="loading" style="display: none;">Loading data...</div>
+
+            <!-- Month Selector -->
+            <div class="month-selector" id="month-selector">
+              <button class="month-nav-btn" id="btn-prev-month">&#8249;</button>
+              <div class="month-list" id="month-list"></div>
+              <button class="month-nav-btn" id="btn-next-month">&#8250;</button>
+            </div>
+
+            <!-- Selected Month Allocation Panel -->
+            <div id="allocation-panel"></div>
+          </div>
+
+          <!-- Monthly History Table -->
+          <div class="card">
+            <h3>Allocation History</h3>
+            <div id="monthly-table-container"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Transactions Screen (Link & Settle) -->
+      <section id="screen-transactions" class="screen">
+        <!-- Not Configured Warning -->
+        <div id="transactions-not-configured" class="card" style="display: none;">
+          <h2>Transactions</h2>
+          <p class="placeholder-text">Complete setup first to manage transactions.</p>
+        </div>
+
+        <!-- Transactions Content -->
+        <div id="transactions-content" style="display: none;">
+          <!-- Header with Member Selector -->
+          <div class="card consistency-header">
+            <div class="card-header-with-actions">
+              <div>
+                <h2>Link Transactions</h2>
+                <p class="help-text">Match and link transactions between personal and shared budgets.</p>
+              </div>
+              <div class="consistency-actions">
+                <button id="btn-open-settle" class="btn btn-primary btn-small">
+                  <span>&#9878;</span> Settle Up
+                </button>
+                <button id="btn-refresh-transactions" class="btn btn-secondary btn-small">Refresh</button>
+              </div>
+            </div>
+            <div id="transactions-loading" class="loading" style="display: none;">Loading transactions...</div>
+
+            <!-- Member Tabs -->
+            <div id="member-tabs" class="member-tabs"></div>
+
+            <!-- Summary Stats -->
+            <div id="transactions-summary"></div>
+          </div>
+
+          <!-- Linking Mode Banner -->
+          <div id="linking-mode-banner" class="linking-mode-banner" style="display: none;">
+            <span class="linking-mode-text">Select a transaction on the right to link</span>
+            <button id="btn-cancel-linking" class="btn btn-secondary btn-small">Cancel</button>
+          </div>
+
+          <!-- Two Column Layout for Transactions -->
+          <div class="consistency-columns">
+            <!-- Left: Personal Budget -->
+            <div class="consistency-column personal-column">
+              <div class="column-header">
+                <h3>Personal Budget</h3>
+                <span class="column-subtitle">Shared Expenses Category</span>
+                <div id="personal-balances" class="column-balances"></div>
+              </div>
+              <div id="personal-transactions" class="transaction-list"></div>
+            </div>
+
+            <!-- Right: Shared Budget -->
+            <div class="consistency-column shared-column">
+              <div class="column-header">
+                <h3>Shared Budget</h3>
+                <span class="column-subtitle">Contribution Account</span>
+                <div id="shared-balances" class="column-balances"></div>
+              </div>
+              <div id="shared-transactions" class="transaction-list"></div>
+            </div>
+          </div>
+
+          <!-- Linked Transactions (always visible) -->
+          <div class="card">
+            <h3>Linked Transactions</h3>
+            <div id="linked-container"></div>
+          </div>
+        </div>
+
+        <!-- Settle Up Modal -->
+        <div id="settle-modal" class="modal-overlay" style="display: none;">
+          <div class="modal modal-large">
+            <div class="modal-header">
+              <h3>Settle Up</h3>
+              <button id="btn-close-settle" class="btn-close">&times;</button>
+            </div>
+            <div class="modal-body">
+              <p class="help-text">Create balancing transactions between members. This creates transactions in each personal budget and a transfer between contribution accounts in the shared budget.</p>
+
+              <div class="balancing-form">
+                <div class="balancing-preview" id="balancing-preview"></div>
+
+                <div class="balancing-inputs">
+                  <div class="form-group">
+                    <label for="balancing-amount">Amount</label>
+                    <input type="number" id="balancing-amount" placeholder="0.00" step="0.01" min="0">
+                    <small>Amount to transfer</small>
+                  </div>
+                  <div class="form-group">
+                    <label for="balancing-from">From</label>
+                    <select id="balancing-from">
+                      <option value="">Select member...</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label for="balancing-from-account">Account</label>
+                    <select id="balancing-from-account" disabled>
+                      <option value="">Select member first...</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label for="balancing-to">To</label>
+                    <select id="balancing-to">
+                      <option value="">Select member...</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label for="balancing-to-account">Account</label>
+                    <select id="balancing-to-account" disabled>
+                      <option value="">Select member first...</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label for="balancing-date">Date</label>
+                    <input type="date" id="balancing-date">
+                  </div>
+                  <div class="form-group">
+                    <label for="balancing-memo">Memo</label>
+                    <input type="text" id="balancing-memo" placeholder="Settling up">
+                  </div>
+                </div>
+
+                <div class="modal-actions">
+                  <button id="btn-cancel-settle" class="btn btn-secondary">Cancel</button>
+                  <button id="btn-create-balancing" class="btn btn-primary" disabled>Create Balancing Transactions</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Analytics Screen -->
+      <section id="screen-analytics" class="screen">
+        <!-- Not Configured Warning -->
+        <div id="analytics-not-configured" class="card" style="display: none;">
+          <h2>Analytics</h2>
+          <p class="placeholder-text">Complete setup first to access analytics.</p>
+        </div>
+
+        <!-- Analytics Content -->
+        <div id="analytics-content" style="display: none;">
+          <!-- Time Range Selector -->
+          <div class="card">
+            <div class="time-range-selector">
+              <span class="time-range-label">Time Range:</span>
+              <div class="time-range-btns">
+                <button class="time-range-btn" data-range="3mo">3 Months</button>
+                <button class="time-range-btn active" data-range="6mo">6 Months</button>
+                <button class="time-range-btn" data-range="12mo">12 Months</button>
+                <button class="time-range-btn" data-range="ytd">YTD</button>
+                <button class="time-range-btn" data-range="all">All Time</button>
+              </div>
+              <button id="btn-refresh-analytics" class="btn btn-secondary btn-small">Refresh</button>
+            </div>
+          </div>
+
+          <!-- Loading -->
+          <div id="analytics-loading" class="loading" style="display: none;">Loading analytics data...</div>
+
+          <!-- Cumulative Chart -->
+          <div class="card" id="cumulative-chart-card" style="display: none;">
+            <h2>Cumulative Overview</h2>
+            <p class="help-text">Running totals of contributions, expenses, and balance over time.</p>
+            <div id="cumulative-chart-container"></div>
+          </div>
+
+          <!-- Contribution History -->
+          <div class="card" id="contribution-history-card" style="display: none;">
+            <h2>Monthly Breakdown</h2>
+            <p class="help-text">Monthly spending and contributions by member.</p>
+            <div id="contribution-history-container"></div>
+          </div>
+
+          <!-- Money Flow (Sankey Diagram) -->
+          <div class="card" id="money-flow-card" style="display: none;">
+            <h2>Money Flow</h2>
+            <p class="help-text">Visualize how contributions from each member flow into spending categories.</p>
+            <div id="money-flow-container"></div>
+          </div>
+
+          <!-- Spending by Category -->
+          <div class="card" id="spending-breakdown-card" style="display: none;">
+            <h2>Spending by Category</h2>
+            <p class="help-text">Breakdown of shared expenses by category.</p>
+            <div id="spending-breakdown-container"></div>
+          </div>
+
+          <!-- Member Comparison -->
+          <div class="card" id="member-comparison-card" style="display: none;">
+            <h2>Member Comparison</h2>
+            <p class="help-text">Compare spending and contributions across household members.</p>
+            <div id="member-comparison-container"></div>
+          </div>
+
+          <!-- Trends -->
+          <div class="card" id="trends-card" style="display: none;">
+            <h2>Trends & Patterns</h2>
+            <p class="help-text">Spending trends and top recipients.</p>
+            <div id="trends-container"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container"></div>
+  </div>
+
+  <script src="js/storage.js"></script>
+  <script src="js/ynab-client.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/data-service.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/setup.js"></script>
+  <script src="js/overview.js"></script>
+  <script src="js/monthly.js"></script>
+  <script src="js/consistency.js"></script>
+  <script src="js/analytics.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
