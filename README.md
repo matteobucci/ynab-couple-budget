@@ -1,19 +1,8 @@
 # YNAB Couple Budget
 
-A client-side web app for managing shared finances between partners using [YNAB](https://www.ynab.com/) (You Need A Budget). Connects directly to the YNAB API from the browser — no backend, no accounts, no data leaves your machine.
+A coordination layer for couples who share expenses through [YNAB](https://www.ynab.com/). Each partner keeps their own personal budget with full autonomy, while a shared household budget tracks combined spending. This tool bridges the three budgets — linking transactions, managing monthly contributions, and automating settle-ups — all from the browser with no backend.
 
-## The Problem
-
-YNAB is built for individuals. When two people share household expenses but keep separate finances, things get messy fast:
-
-- **Who paid for what?** One partner buys groceries, the other pays rent. Without tracking, nobody knows who's ahead.
-- **Variable contributions.** Maybe one person earns more and contributes 60%. Or contributions change month to month. YNAB has no native way to model this.
-- **Three budgets, zero coordination.** Each person has a personal budget, plus there's a shared household budget. Transactions need to appear in the right places across all three, with matching amounts and categories. Doing this manually is tedious and error-prone.
-- **Settling up is a nightmare.** When one partner overspends from the shared pool, you need balancing transactions across four accounts (two personal + two shared) that all stay in sync.
-
-## The Solution
-
-This tool sits on top of your existing YNAB budgets and handles the coordination layer. The core idea is simple: **link transactions across budgets using IDs embedded in memo fields**.
+The core idea: **each shared expense gets a short ID tag in its memo field** (like `#A3K9M2#`) that links the personal and shared budget entries together. The app generates these IDs, copies transactions between budgets, calculates contribution splits, and creates balancing transactions when one partner overspends — keeping everything in sync across all accounts.
 
 ```
 Personal Budget (Matteo)          Shared Household Budget
