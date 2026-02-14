@@ -18,7 +18,6 @@ const Overview = {
       notConfigured: document.getElementById('overview-not-configured'),
       content: document.getElementById('overview-content'),
       balancesContent: document.getElementById('overview-balances-content'),
-      statusContent: document.getElementById('overview-status-content'),
       attentionContent: document.getElementById('overview-attention'),
       insightsContent: document.getElementById('overview-insights-content'),
       goTransactionsBtn: document.getElementById('btn-go-transactions'),
@@ -37,13 +36,6 @@ const Overview = {
   subscribeToStore() {
     if (this.state.subscribed) return;
 
-    // Subscribe to syncStatus changes (computed from linked pairs)
-    Store.subscribe('syncStatus', (syncStatus) => {
-      if (this.state.loaded && syncStatus) {
-        this.onSyncStatusChanged(syncStatus);
-      }
-    });
-
     // Subscribe to transaction changes to update insights
     Store.subscribe('transactions', () => {
       if (this.state.loaded) {
@@ -52,26 +44,6 @@ const Overview = {
     });
 
     this.state.subscribed = true;
-  },
-
-  /**
-   * Handle syncStatus changes from Store
-   */
-  onSyncStatusChanged(syncStatus) {
-    // Update sync status display
-    this.renderSyncStatus({
-      unlinkedPersonal: Object.values(Store.state.unlinkedPersonal || {}).flat().length,
-      unlinkedShared: Object.values(Store.state.unlinkedShared || {}).flat().length,
-      linkedPairs: syncStatus.linked,
-      totalUnlinked: syncStatus.unlinked
-    });
-
-    // Update attention items with new sync status
-    if (this.state.data) {
-      const config = Store.getConfig();
-      const attentionItems = this.getAttentionItems(this.state.data.transactions, config.members, config);
-      this.renderAttentionItems(attentionItems);
-    }
   },
 
   /**
@@ -163,17 +135,15 @@ const Overview = {
       const accountBalances = await this.fetchAccountBalances(config, members);
       this.state.accountBalances = accountBalances;
 
-      // Calculate balances and sync status
+      // Calculate balances and insights
       const balances = this.calculateBalances(transactions, members, config, accountBalances);
-      const syncStatus = this.calculateSyncStatus(transactions, members, config);
       const attentionItems = this.getAttentionItems(transactions, members, config);
       const insights = this.calculateInsights(transactions, members, config);
 
-      this.state.data = { balances, syncStatus, attentionItems, insights, transactions };
+      this.state.data = { balances, attentionItems, insights, transactions };
       this.state.loaded = true;
 
-      this.renderBalances(balances, syncStatus, config, accountBalances);
-      this.renderSyncStatus(syncStatus);
+      this.renderBalances(balances, config, accountBalances);
       this.renderAttentionItems(attentionItems);
       this.renderInsights(insights, config);
 
@@ -222,50 +192,6 @@ const Overview = {
     const totalBalance = balances.reduce((sum, b) => sum + b.balance, 0);
 
     return { members: balances, total: totalBalance };
-  },
-
-  calculateSyncStatus(transactions, members, config) {
-    const cutoffDate = config.consistencyCutoffDate || null;
-    let unlinkedPersonal = 0;
-    let unlinkedShared = 0;
-    let linkedPairs = 0;
-
-    members.forEach(member => {
-      const personalTxns = (transactions.members?.[member.name] || []).filter(txn => {
-        if (cutoffDate && txn.date < cutoffDate) return false;
-        if (txn.deleted) return false;
-        return true;
-      });
-
-      const sharedTxns = (transactions.shared || []).filter(txn => {
-        if (txn.account_id !== member.contributionAccountId) return false;
-        if (cutoffDate && txn.date < cutoffDate) return false;
-        if (txn.deleted) return false;
-        return true;
-      });
-
-      // Count unlinked transactions
-      personalTxns.forEach(txn => {
-        if (!LinkUtils.hasId(txn.memo)) {
-          unlinkedPersonal++;
-        } else {
-          linkedPairs++;
-        }
-      });
-
-      sharedTxns.forEach(txn => {
-        if (!LinkUtils.hasId(txn.memo)) {
-          unlinkedShared++;
-        }
-      });
-    });
-
-    return {
-      unlinkedPersonal,
-      unlinkedShared,
-      linkedPairs: Math.floor(linkedPairs / 2), // Each pair has 2 transactions
-      totalUnlinked: unlinkedPersonal + unlinkedShared
-    };
   },
 
   getAttentionItems(transactions, members, config) {
@@ -348,161 +274,34 @@ const Overview = {
     return items;
   },
 
-  /**
-   * Determine the consistency status for a member
-   * Returns: 'synced' | 'pending' | 'mismatch'
-   */
-  getConsistencyStatus(memberName, displayedBalance, accountBalances, syncStatus) {
-    if (!accountBalances || accountBalances[memberName] === undefined) {
-      return { status: 'unknown', message: 'Unable to verify account balance' };
-    }
-
-    const hasUnlinked = syncStatus.unlinkedPersonal > 0 || syncStatus.unlinkedShared > 0;
-
-    // Show synced (green) if no unlinked transactions
-    if (!hasUnlinked) {
-      return {
-        status: 'synced',
-        message: 'All transactions synced'
-      };
-    }
-
-    // Show pending (yellow) if there are unlinked transactions
-    return {
-      status: 'pending',
-      message: `${syncStatus.unlinkedPersonal + syncStatus.unlinkedShared} unlinked transactions`
-    };
-  },
-
-  renderBalances(balances, syncStatus, config, accountBalances) {
+  renderBalances(balances, config, accountBalances) {
     if (!this.elements.balancesContent) return;
 
-    // Cutoff date header
-    let cutoffHtml = '';
-    if (config.consistencyCutoffDate) {
-      const cutoffDate = new Date(config.consistencyCutoffDate);
-      const formattedDate = cutoffDate.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-      });
-      cutoffHtml = `
-        <div class="balance-cutoff-info">
-          <span class="cutoff-icon">&#128197;</span>
-          <span class="cutoff-text">Tracking since <strong>${formattedDate}</strong></span>
-        </div>
-      `;
-    }
-
-    let html = cutoffHtml + '<div class="balance-cards">';
+    let html = '<div class="balance-cards">';
 
     balances.members.forEach(member => {
       const valueClass = member.balance > 0 ? 'positive' : member.balance < 0 ? 'negative' : 'neutral';
-      const consistency = this.getConsistencyStatus(member.name, member.balance, accountBalances, syncStatus);
-
-      let statusIcon = '';
-      let statusClass = '';
-      if (consistency.status === 'synced') {
-        statusIcon = '&#10003;'; // Checkmark
-        statusClass = 'status-synced';
-      } else if (consistency.status === 'pending') {
-        statusIcon = '&#9888;'; // Warning
-        statusClass = 'status-pending';
-      } else if (consistency.status === 'mismatch') {
-        statusIcon = '&#10007;'; // X mark
-        statusClass = 'status-mismatch';
-      }
 
       html += `
         <div class="balance-item">
           <span class="balance-name">${Utils.escapeHtml(member.name)}</span>
-          <div class="balance-value-wrapper">
-            <span class="balance-value ${valueClass}">${Utils.formatCurrency(member.balance)}</span>
-            ${consistency.status !== 'unknown' ? `
-              <span class="balance-status ${statusClass}"
-                    data-tooltip="${Utils.escapeHtml(consistency.message)}"
-                    title="${Utils.escapeHtml(consistency.message)}">
-                ${statusIcon}
-              </span>
-            ` : ''}
-          </div>
+          <span class="balance-value ${valueClass}">${Utils.formatCurrency(member.balance)}</span>
         </div>
       `;
     });
 
-    // Add household total with overall status
+    // Add household total
     const totalClass = balances.total >= 0 ? 'positive' : 'negative';
-
-    // Determine overall status based on unlinked transactions
-    const hasUnlinked = syncStatus.unlinkedPersonal > 0 || syncStatus.unlinkedShared > 0;
-    const overallStatus = hasUnlinked ? 'pending' : 'synced';
-
-    let totalStatusIcon = '';
-    let totalStatusClass = '';
-    let totalStatusMessage = '';
-    if (overallStatus === 'synced') {
-      totalStatusIcon = '&#10003;';
-      totalStatusClass = 'status-synced';
-      totalStatusMessage = 'All transactions synced';
-    } else {
-      totalStatusIcon = '&#9888;';
-      totalStatusClass = 'status-pending';
-      totalStatusMessage = `${syncStatus.unlinkedPersonal + syncStatus.unlinkedShared} unlinked transactions`;
-    }
 
     html += `
       <div class="balance-item" style="border-left-color: #6366f1;">
         <span class="balance-name"><strong>Household Total</strong></span>
-        <div class="balance-value-wrapper">
-          <span class="balance-value ${totalClass}">${Utils.formatCurrency(balances.total)}</span>
-          <span class="balance-status ${totalStatusClass}"
-                data-tooltip="${Utils.escapeHtml(totalStatusMessage)}"
-                title="${Utils.escapeHtml(totalStatusMessage)}">
-            ${totalStatusIcon}
-          </span>
-        </div>
+        <span class="balance-value ${totalClass}">${Utils.formatCurrency(balances.total)}</span>
       </div>
     `;
 
     html += '</div>';
     this.elements.balancesContent.innerHTML = html;
-  },
-
-  renderSyncStatus(syncStatus) {
-    if (!this.elements.statusContent) return;
-
-    const linkedIcon = syncStatus.linkedPairs > 0 ? 'ok' : 'warning';
-    const unlinkedIcon = syncStatus.totalUnlinked === 0 ? 'ok' :
-                         syncStatus.totalUnlinked < 5 ? 'warning' : 'error';
-
-    let html = '<div class="sync-status-list">';
-
-    html += `
-      <div class="sync-item">
-        <div class="sync-icon ${linkedIcon}">&#10003;</div>
-        <span class="sync-label">Linked Pairs</span>
-        <span class="sync-count">${syncStatus.linkedPairs}</span>
-      </div>
-    `;
-
-    html += `
-      <div class="sync-item">
-        <div class="sync-icon ${unlinkedIcon}">${unlinkedIcon === 'ok' ? '&#10003;' : '!'}</div>
-        <span class="sync-label">Unlinked Personal</span>
-        <span class="sync-count">${syncStatus.unlinkedPersonal}</span>
-      </div>
-    `;
-
-    html += `
-      <div class="sync-item">
-        <div class="sync-icon ${unlinkedIcon}">${unlinkedIcon === 'ok' ? '&#10003;' : '!'}</div>
-        <span class="sync-label">Unlinked Shared</span>
-        <span class="sync-count">${syncStatus.unlinkedShared}</span>
-      </div>
-    `;
-
-    html += '</div>';
-    this.elements.statusContent.innerHTML = html;
   },
 
   renderAttentionItems(items) {
@@ -560,18 +359,19 @@ const Overview = {
     const currentMonth = now.toISOString().slice(0, 7); // YYYY-MM
     const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 7);
 
-    // Get all shared transactions for insights
+    // Get all shared transactions, excluding transfers between accounts
     const allSharedTxns = (transactions.shared || []).filter(txn => {
       if (txn.deleted) return false;
       if (cutoffDate && txn.date < cutoffDate) return false;
+      if (txn.transfer_account_id) return false; // Exclude transfers
       return true;
     });
 
-    // Current month spending (outflows only)
+    // Current month expenses (outflows only, no transfers)
     const currentMonthTxns = allSharedTxns.filter(txn => txn.date.startsWith(currentMonth) && txn.amount < 0);
     const currentMonthSpending = Math.abs(currentMonthTxns.reduce((sum, txn) => sum + txn.amount, 0) / 1000);
 
-    // Last month spending
+    // Last month expenses
     const lastMonthTxns = allSharedTxns.filter(txn => txn.date.startsWith(lastMonth) && txn.amount < 0);
     const lastMonthSpending = Math.abs(lastMonthTxns.reduce((sum, txn) => sum + txn.amount, 0) / 1000);
 
@@ -584,13 +384,13 @@ const Overview = {
     // Total transactions this period
     const totalTransactions = allSharedTxns.length;
 
-    // Recent activity (last 7 days)
+    // Recent activity (last 7 days, no transfers)
     const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const recentTxns = allSharedTxns.filter(txn => txn.date >= sevenDaysAgo);
     const recentCount = recentTxns.length;
     const recentSpending = Math.abs(recentTxns.filter(t => t.amount < 0).reduce((sum, txn) => sum + txn.amount, 0) / 1000);
 
-    // Member contribution percentages (based on transaction count)
+    // Member spending percentages (excluding transfers)
     const memberStats = members.map(member => {
       const memberTxns = allSharedTxns.filter(txn => txn.account_id === member.contributionAccountId);
       const outflows = memberTxns.filter(t => t.amount < 0);
@@ -613,8 +413,35 @@ const Overview = {
       ? currentMonthSpending / currentMonthTxns.length
       : 0;
 
-    // Largest transaction this month
-    const largestTxn = currentMonthTxns.sort((a, b) => a.amount - b.amount)[0];
+    // Build member account lookup for attributing expenses
+    const accountToMember = {};
+    members.forEach(m => {
+      if (m.contributionAccountId) accountToMember[m.contributionAccountId] = m.name;
+    });
+
+    // Top 5 expenses this month (by absolute amount)
+    const top5Expenses = [...currentMonthTxns]
+      .sort((a, b) => a.amount - b.amount) // most negative first
+      .slice(0, 5)
+      .map(txn => ({
+        amount: Math.abs(txn.amount / 1000),
+        payee: txn.payee_name || 'Unknown',
+        date: txn.date,
+        member: accountToMember[txn.account_id] || 'Unknown'
+      }));
+
+    // Total allocated this month (contributions = inflows with no category_id)
+    // Use all shared txns including transfers for this, from the unfiltered set
+    const allSharedUnfiltered = (transactions.shared || []).filter(txn => {
+      if (txn.deleted) return false;
+      if (cutoffDate && txn.date < cutoffDate) return false;
+      return true;
+    });
+    const currentMonthContributions = allSharedUnfiltered.filter(txn =>
+      txn.date.startsWith(currentMonth) && txn.amount > 0 && !txn.category_id && !txn.transfer_account_id
+    );
+    const totalAllocated = currentMonthContributions.reduce((sum, txn) => sum + txn.amount, 0) / 1000;
+    const remainingBudget = totalAllocated - currentMonthSpending;
 
     return {
       currentMonthSpending,
@@ -625,11 +452,9 @@ const Overview = {
       recentSpending,
       memberStats,
       avgTransactionSize,
-      largestTransaction: largestTxn ? {
-        amount: Math.abs(largestTxn.amount / 1000),
-        payee: largestTxn.payee_name || 'Unknown',
-        date: largestTxn.date
-      } : null,
+      top5Expenses,
+      totalAllocated,
+      remainingBudget,
       currentMonth: now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
     };
   },
@@ -702,11 +527,18 @@ const Overview = {
           <div class="insight-sub">This month</div>
         </div>
 
-        <!-- Total Transactions -->
+        <!-- Total Allocated -->
         <div class="insight-card">
-          <div class="insight-label">Total Tracked</div>
-          <div class="insight-value">${insights.totalTransactions}</div>
-          <div class="insight-sub">transactions</div>
+          <div class="insight-label">Allocated</div>
+          <div class="insight-value">${Utils.formatCurrency(insights.totalAllocated)}</div>
+          <div class="insight-sub">This month</div>
+        </div>
+
+        <!-- Remaining Budget -->
+        <div class="insight-card">
+          <div class="insight-label">Remaining</div>
+          <div class="insight-value ${insights.remainingBudget >= 0 ? '' : 'negative'}">${Utils.formatCurrency(insights.remainingBudget)}</div>
+          <div class="insight-sub">Allocated - spent</div>
         </div>
       </div>
 
@@ -716,12 +548,22 @@ const Overview = {
         ${memberBarsHtml}
       </div>
 
-      ${insights.largestTransaction ? `
+      ${insights.top5Expenses.length > 0 ? `
         <div class="insight-section">
-          <div class="insight-section-title">Largest This Month</div>
-          <div class="largest-txn">
-            <span class="txn-payee">${Utils.escapeHtml(insights.largestTransaction.payee)}</span>
-            <span class="txn-amount">${Utils.formatCurrency(insights.largestTransaction.amount)}</span>
+          <div class="insight-section-title">Top Expenses This Month</div>
+          <div class="top-expenses-list">
+            ${insights.top5Expenses.map(txn => {
+              const dateFormatted = new Date(txn.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+              return `
+                <div class="top-expense-item">
+                  <div class="top-expense-info">
+                    <span class="top-expense-payee">${Utils.escapeHtml(txn.payee)}</span>
+                    <span class="top-expense-meta">${Utils.escapeHtml(txn.member)} &middot; ${dateFormatted}</span>
+                  </div>
+                  <span class="top-expense-amount">${Utils.formatCurrency(txn.amount)}</span>
+                </div>
+              `;
+            }).join('')}
           </div>
         </div>
       ` : ''}
