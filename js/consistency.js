@@ -17,6 +17,7 @@ const Consistency = {
     selectedMember: null,
     linkingMode: false,
     selectedPersonalTxn: null,
+    filterUnmatched: true,
     transactions: {
       personal: {}, // { memberId: transactions[] }
       shared: []
@@ -47,6 +48,9 @@ const Consistency = {
     this.elements = elements;
     this.state.memberAccounts = {}; // For balancing form account selection
     this.state.subscribed = false;
+    // Restore filter preference from localStorage
+    const savedFilter = Storage.get('consistency_filter_unmatched');
+    this.state.filterUnmatched = savedFilter !== null ? savedFilter : true;
     this.bindEvents();
     this.subscribeToStore();
   },
@@ -1034,8 +1038,9 @@ const Consistency = {
     const config = Store.getConfig();
 
     const tabs = config.members.map(member => {
-      const unlinkedCount = (this.state.unlinkedPersonal[member.name]?.length || 0) +
-                           (this.state.unlinkedShared[member.name]?.length || 0);
+      const unlinkedCount =
+        (this.state.unlinkedPersonal[member.name] || []).filter(t => !t.isBeforeCutoff).length +
+        (this.state.unlinkedShared[member.name] || []).filter(t => !t.isBeforeCutoff).length;
       const isActive = this.state.selectedMember === member.name;
 
       return `
@@ -1077,28 +1082,38 @@ const Consistency = {
     const html = `
       <div class="consistency-summary-header">
         <span class="summary-since">Since ${cutoffFormatted}</span>
-        <span class="summary-type-counts">
-          <span class="type-count"><span class="type-icon">&#9878;</span> ${this.state.balancingCount || 0} balancing</span>
-          <span class="type-count"><span class="type-icon">&#128197;</span> ${this.state.monthlyCount || 0} monthly</span>
-        </span>
       </div>
       <div class="consistency-stats">
         <div class="stat-item ${personalCount > 0 ? 'warning' : 'success'}">
           <span class="stat-number">${personalCount}</span>
-          <span class="stat-label">Unlinked Personal</span>
+          <span class="stat-label">Unlinked in Personal Budget</span>
         </div>
         <div class="stat-item ${sharedCount > 0 ? 'warning' : 'success'}">
           <span class="stat-number">${sharedCount}</span>
-          <span class="stat-label">Unlinked Shared</span>
+          <span class="stat-label">Unlinked in Shared Budget</span>
         </div>
         <div class="stat-item">
           <span class="stat-number">${totalLinked}</span>
           <span class="stat-label">Linked Pairs</span>
         </div>
       </div>
+      <div class="consistency-filter">
+        <label class="filter-toggle">
+          <input type="checkbox" id="filter-unmatched" ${this.state.filterUnmatched ? 'checked' : ''}>
+          <span>Show only unmatched</span>
+        </label>
+      </div>
     `;
 
     this.elements.consistencySummary.innerHTML = html;
+
+    // Bind filter toggle
+    const filterCheckbox = document.getElementById('filter-unmatched');
+    filterCheckbox?.addEventListener('change', (e) => {
+      this.state.filterUnmatched = e.target.checked;
+      Storage.set('consistency_filter_unmatched', this.state.filterUnmatched);
+      this.renderTransactionColumns();
+    });
   },
 
   renderTransactionColumns() {
@@ -1112,10 +1127,15 @@ const Consistency = {
     const linkedTxns = this.state.linkedPersonal[member] || [];
 
     // Combine all transactions and sort by date (most recent first)
-    const allTransactions = [
+    let allTransactions = [
       ...unlinkedTxns.map(t => ({ ...t, isLinked: false })),
       ...linkedTxns.map(t => ({ ...t, isLinked: true }))
     ].sort((a, b) => b.date.localeCompare(a.date));
+
+    // Apply filter: show only unmatched (not linked, not before cutoff)
+    if (this.state.filterUnmatched) {
+      allTransactions = allTransactions.filter(t => !t.isLinked && !t.isBeforeCutoff);
+    }
 
     if (allTransactions.length === 0) {
       this.elements.personalTransactions.innerHTML = `
@@ -1151,8 +1171,11 @@ const Consistency = {
           </div>
           <div class="txn-actions">
             ${!isLinked && !isBeforeCutoff ? `
-              <button class="btn-txn-action btn-duplicate" data-action="duplicate" title="Copy to shared budget">
-                <span>+</span>
+              <button class="btn-txn-action btn-link" data-action="link" title="Link with existing shared transaction">
+                <span>&#128279;</span>
+              </button>
+              <button class="btn-txn-action btn-copy" data-action="copy" title="Copy to shared budget">
+                <span>&#128203;</span>
               </button>
             ` : ''}
             ${showDelete ? `
@@ -1189,10 +1212,15 @@ const Consistency = {
     const linkedTxns = this.state.linkedShared[member] || [];
 
     // Combine all transactions and sort by date (most recent first)
-    const allTransactions = [
+    let allTransactions = [
       ...unlinkedTxns.map(t => ({ ...t, isLinked: false })),
       ...linkedTxns.map(t => ({ ...t, isLinked: true }))
     ].sort((a, b) => b.date.localeCompare(a.date));
+
+    // Apply filter: show only unmatched (not linked, not before cutoff)
+    if (this.state.filterUnmatched) {
+      allTransactions = allTransactions.filter(t => !t.isLinked && !t.isBeforeCutoff);
+    }
 
     if (allTransactions.length === 0) {
       this.elements.sharedTransactions.innerHTML = `
@@ -1260,18 +1288,17 @@ const Consistency = {
   bindPersonalColumnEvents() {
     this.elements.personalTransactions.querySelectorAll('.txn-row').forEach(row => {
       const isLinked = row.dataset.linked === 'true';
-      const isBeforeCutoff = row.classList.contains('before-cutoff');
       const linkId = row.dataset.linkId;
 
-      // Click on main area to select for linking (only for unlinked, after-cutoff transactions)
-      row.querySelector('.txn-main').addEventListener('click', () => {
-        if (isLinked || isBeforeCutoff) return; // Don't allow selecting linked or before-cutoff transactions
+      // Link button - enters linking mode for this transaction
+      row.querySelector('.btn-link')?.addEventListener('click', (e) => {
+        e.stopPropagation();
         const txnId = row.dataset.txnId;
         this.selectPersonalTransaction(txnId);
       });
 
-      // Duplicate button
-      row.querySelector('.btn-duplicate')?.addEventListener('click', (e) => {
+      // Copy button - copies to shared budget
+      row.querySelector('.btn-copy')?.addEventListener('click', (e) => {
         e.stopPropagation();
         const txnId = row.dataset.txnId;
         this.duplicateToShared(txnId);

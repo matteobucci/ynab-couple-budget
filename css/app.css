@@ -2907,21 +2907,26 @@ select:focus {
   font-weight: 500;
 }
 
-.summary-type-counts {
-  display: flex;
-  gap: 1rem;
+/* Consistency Filter */
+.consistency-filter {
+  margin-top: 0.75rem;
+  padding-top: 0.5rem;
 }
 
-.type-count {
-  font-size: 0.75rem;
-  color: var(--color-text-muted);
-  display: flex;
+.filter-toggle {
+  display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  user-select: none;
 }
 
-.type-count .type-icon {
-  font-size: 0.85rem;
+.filter-toggle input[type="checkbox"] {
+  width: auto;
+  accent-color: var(--color-primary);
+  cursor: pointer;
 }
 
 /* Consistency Stats */
@@ -2997,11 +3002,11 @@ select:focus {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
-  margin-bottom: 1rem;
+  margin-top: 1rem;
 }
 
 .consistency-column {
-  background: var(--color-card-bg);
+  background: var(--color-bg);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   overflow: hidden;
@@ -3295,8 +3300,28 @@ select:focus {
   color: white;
 }
 
-.btn-duplicate span {
-  font-weight: bold;
+.btn-link {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #2563eb;
+}
+
+.btn-link:hover {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: white;
+}
+
+.btn-copy {
+  background: var(--color-bg);
+  border-color: var(--color-border);
+  color: var(--color-text-muted);
+}
+
+.btn-copy:hover {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: white;
 }
 
 .btn-monthly {
