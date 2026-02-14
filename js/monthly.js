@@ -121,6 +121,9 @@ const Monthly = {
       const uniqueBudgetIds = [...new Set(budgetIds)];
       await DataService.preloadTransactions(uniqueBudgetIds, { forceRefresh });
 
+      // Load contribution account balances for mismatch warning
+      await this.loadContributionAccountBalances(config);
+
       // Render month selector
       this.renderMonthSelector();
 
@@ -142,6 +145,21 @@ const Monthly = {
     }
   },
 
+  async loadContributionAccountBalances(config) {
+    this.state.contributionAccountBalances = {};
+    try {
+      const accounts = await YnabClient.getAccounts(config.sharedBudgetId);
+      for (const member of config.members) {
+        const account = accounts.find(a => a.id === member.contributionAccountId);
+        this.state.contributionAccountBalances[member.name] = account
+          ? YnabClient.fromMilliunits(account.balance)
+          : 0;
+      }
+    } catch (error) {
+      console.warn('Failed to load contribution account balances:', error);
+    }
+  },
+
   async loadVisibleMonthsData() {
     const months = this.getVisibleMonths();
     for (const month of months) {
@@ -149,6 +167,8 @@ const Monthly = {
         await this.loadMonthData(month);
       }
     }
+    // Re-render month selector to show allocation amounts
+    this.renderMonthSelector();
   },
 
   async loadSelectedMonthData() {
@@ -221,6 +241,30 @@ const Monthly = {
     return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
   },
 
+  formatAbbreviatedCurrency(amount) {
+    if (!amount || amount === 0) return '—';
+    if (amount >= 1000) {
+      return `€${(amount / 1000).toFixed(1)}k`;
+    }
+    return `€${Math.round(amount)}`;
+  },
+
+  getMonthTotalAllocation(monthStr) {
+    const config = Store.getConfig();
+    const monthData = this.state.monthsData[monthStr];
+    if (!monthData) return null;
+
+    return config.members.reduce((sum, member) => {
+      const data = monthData.members[member.name];
+      if (!data) return sum;
+      const saved = this.state.allocations?.[monthStr]?.[member.name];
+      const sharedBudgeted = YnabClient.fromMilliunits(data.sharedBudgeted || 0);
+      const balActivity = YnabClient.fromMilliunits(data.balancingActivity || 0);
+      const implied = sharedBudgeted - balActivity;
+      return sum + (saved ?? implied);
+    }, 0);
+  },
+
   renderMonthSelector() {
     const months = this.getVisibleMonths();
     const currentMonth = this.getCurrentMonthStr();
@@ -229,6 +273,10 @@ const Monthly = {
       const isSelected = month === this.state.selectedMonth;
       const isCurrent = month === currentMonth;
       const isFuture = month > currentMonth;
+      const totalAllocation = this.getMonthTotalAllocation(month);
+      const allocationLabel = totalAllocation !== null
+        ? this.formatAbbreviatedCurrency(totalAllocation)
+        : '...';
 
       return `
         <button class="month-btn ${isSelected ? 'selected' : ''} ${isCurrent ? 'current' : ''} ${isFuture ? 'future' : ''}"
@@ -236,6 +284,7 @@ const Monthly = {
                 onclick="Monthly.selectMonth('${month}')">
           <span class="month-name">${this.formatMonthLabel(month, true)}</span>
           <span class="month-year">${month.split('-')[0]}</span>
+          <span class="month-allocation">${allocationLabel}</span>
         </button>
       `;
     }).join('');
@@ -289,6 +338,16 @@ const Monthly = {
       const isBalancingCorrect = Math.abs(currentBalancingBudgeted - expectedBalancingBudget) < 0.01;
       const isApplied = totalAllocation > 0 && isSharedCorrect && isBalancingCorrect;
 
+      // Metrics for display
+      const spentThisMonth = Math.abs(YnabClient.fromMilliunits(data.sharedActivity || 0));
+      const balancedThisMonth = Math.abs(balancingActivity);
+      const availableThisMonth = YnabClient.fromMilliunits(data.sharedAvailable || 0);
+
+      // Mismatch warning (current month only)
+      const isCurrent = month === currentMonth;
+      const contribAccountBalance = isCurrent ? (this.state.contributionAccountBalances?.[member.name] ?? null) : null;
+      const hasMismatch = contribAccountBalance !== null && Math.abs(availableThisMonth - contribAccountBalance) > 0.01;
+
       return `
         <div class="allocation-member-card">
           <div class="allocation-member-header">
@@ -312,27 +371,27 @@ const Monthly = {
               </div>
             </div>
 
-            <div class="allocation-row calculated">
-              <label>+ Balancing Activity</label>
-              <span class="allocation-value ${balancingActivity < 0 ? 'negative' : balancingActivity > 0 ? 'positive' : ''}">${Utils.formatCurrency(balancingActivity)}</span>
-            </div>
-
-            <div class="allocation-row calculated result">
-              <label>= Shared Expenses Budget</label>
-              <span class="allocation-value">${Utils.formatCurrency(sharedExpensesBudget)}</span>
-            </div>
-
             <div class="allocation-divider"></div>
 
-            <div class="allocation-row ynab-value">
-              <label>Shared Budget in YNAB</label>
-              <span class="allocation-value ${isSharedCorrect ? 'correct' : 'incorrect'}">${Utils.formatCurrency(currentSharedBudgeted)}</span>
+            <div class="allocation-row calculated">
+              <label>Spent this month</label>
+              <span class="allocation-value negative">${Utils.formatCurrency(spentThisMonth)}</span>
+            </div>
+            <div class="allocation-row calculated">
+              <label>Balanced this month</label>
+              <span class="allocation-value ${balancedThisMonth > 0 ? 'positive' : ''}">${Utils.formatCurrency(balancedThisMonth)}</span>
+            </div>
+            <div class="allocation-row calculated result">
+              <label>Available this month</label>
+              <span class="allocation-value ${availableThisMonth >= 0 ? 'positive' : 'negative'}">${Utils.formatCurrency(availableThisMonth)}</span>
             </div>
 
-            <div class="allocation-row ynab-value">
-              <label>Balancing Budget in YNAB</label>
-              <span class="allocation-value ${isBalancingCorrect ? 'correct' : 'incorrect'}">${Utils.formatCurrency(currentBalancingBudgeted)}</span>
+            ${hasMismatch ? `
+            <div class="allocation-mismatch-warning">
+              Available (${Utils.formatCurrency(availableThisMonth)}) doesn't match contribution account balance (${Utils.formatCurrency(contribAccountBalance)}).
+              <a href="#" class="mismatch-link" onclick="document.querySelector('[data-screen=\\"transactions\\"]').click(); return false;">Go to Transactions to review</a>
             </div>
+            ` : ''}
           </div>
         </div>
       `;
