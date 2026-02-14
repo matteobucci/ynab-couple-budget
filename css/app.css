@@ -4563,3 +4563,131 @@ select:focus {
 .member-stat.clickable .member-stat-label small {
   opacity: 0.6;
 }
+
+/* =====================================
+   ANALYTICS SECTION STYLES
+   ===================================== */
+
+/* Section header with mode toggle */
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+
+.section-header h2 {
+  margin: 0;
+}
+
+.section-header .help-text {
+  margin-top: 0.25rem;
+}
+
+/* Chart mode toggle (Monthly / Cumulative) */
+.chart-mode-toggle {
+  display: flex;
+  background: var(--color-bg);
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.mode-btn {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.mode-btn:hover {
+  color: var(--color-text);
+  background: var(--color-card-bg);
+}
+
+.mode-btn.active {
+  background: var(--color-primary);
+  color: white;
+}
+
+/* Analytics summary row */
+.analytics-summary-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: var(--color-bg);
+  border-radius: var(--radius);
+}
+
+.analytics-summary-stat {
+  text-align: center;
+  min-width: 100px;
+}
+
+.analytics-summary-stat.clickable {
+  cursor: pointer;
+  padding: 0.375rem 0.5rem;
+  border-radius: var(--radius);
+  transition: background 0.15s ease;
+}
+
+.analytics-summary-stat.clickable:hover {
+  background: var(--color-card-bg);
+}
+
+.analytics-summary-label {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  margin-bottom: 0.125rem;
+}
+
+.analytics-summary-value {
+  display: block;
+  font-size: 1.125rem;
+  font-weight: 700;
+  font-family: monospace;
+}
+
+.analytics-summary-sub {
+  display: block;
+  font-size: 0.65rem;
+  color: var(--color-text-muted);
+}
+
+/* Category breakdown within section */
+.analytics-category-breakdown {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.analytics-category-breakdown h4 {
+  margin: 0 0 0.75rem 0;
+  font-size: 0.875rem;
+}
+
+@media (max-width: 768px) {
+  .section-header {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .analytics-summary-row {
+    gap: 0.5rem;
+  }
+
+  .analytics-summary-stat {
+    min-width: 80px;
+  }
+}

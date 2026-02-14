@@ -8,7 +8,12 @@ const Analytics = {
     timeRange: '6mo',
     data: null,
     loading: false,
-    error: null
+    error: null,
+    sectionModes: {
+      allocations: 'monthly',
+      expenses: 'monthly',
+      balancing: 'monthly'
+    }
   },
 
   // Debug mode - enabled when running locally
@@ -67,6 +72,20 @@ const Analytics = {
     // Refresh button
     this.elements.refreshAnalyticsBtn?.addEventListener('click', () => {
       this.loadAnalytics(true);
+    });
+
+    // Mode toggles (Monthly/Cumulative) per section
+    document.querySelectorAll('.chart-mode-toggle').forEach(toggle => {
+      const section = toggle.dataset.section;
+      toggle.querySelectorAll('.mode-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const mode = btn.dataset.mode;
+          this.state.sectionModes[section] = mode;
+          // Update active state
+          toggle.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+          this.renderSection(section);
+        });
+      });
     });
   },
 
@@ -383,7 +402,7 @@ const Analytics = {
     }
 
     // Hide content sections while loading
-    ['cumulativeChartCard', 'contributionHistoryCard', 'moneyFlowCard', 'spendingBreakdownCard', 'memberComparisonCard', 'trendsCard'].forEach(cardName => {
+    ['allocationsCard', 'expensesCard', 'balancingCard'].forEach(cardName => {
       if (this.elements[cardName]) {
         this.elements[cardName].style.display = show ? 'none' : 'block';
       }
@@ -392,7 +411,7 @@ const Analytics = {
 
   renderError(error) {
     // Hide all content cards
-    ['cumulativeChartCard', 'contributionHistoryCard', 'moneyFlowCard', 'spendingBreakdownCard', 'memberComparisonCard', 'trendsCard'].forEach(cardName => {
+    ['allocationsCard', 'expensesCard', 'balancingCard'].forEach(cardName => {
       if (this.elements[cardName]) {
         this.elements[cardName].style.display = 'none';
       }
@@ -457,102 +476,328 @@ const Analytics = {
       this.elements.analyticsError.style.display = 'none';
     }
 
-    this.renderCumulativeChart();
-    this.renderContributionHistory();
-    this.renderMoneyFlow();
-    this.renderSpendingBreakdown();
-    this.renderMemberComparison();
-    this.renderTrends();
+    // Store transaction data for detail modals
+    this._memberTxnData = {};
+    this.state.data.members.forEach(m => {
+      this._memberTxnData[m.member.name] = {
+        spent: m.transactions,
+        contributed: m.contributions,
+        reimbursements: m.reimbursements,
+        transfers: m.transfers
+      };
+    });
+
+    this.renderSection('allocations');
+    this.renderSection('expenses');
+    this.renderSection('balancing');
   },
 
-  renderCumulativeChart() {
-    const { members, sharedTransactions } = this.state.data;
+  renderSection(section) {
+    const mode = this.state.sectionModes[section];
+    switch (section) {
+      case 'allocations':
+        mode === 'cumulative' ? this.renderAllocationsCumulative() : this.renderAllocationsMonthly();
+        break;
+      case 'expenses':
+        mode === 'cumulative' ? this.renderExpensesCumulative() : this.renderExpensesMonthly();
+        break;
+      case 'balancing':
+        mode === 'cumulative' ? this.renderBalancingCumulative() : this.renderBalancingMonthly();
+        break;
+    }
+  },
 
-    // Collect all months from all members and shared transactions
-    const allMonths = new Set();
-    members.forEach(m => {
-      m.monthlyData.forEach(md => allMonths.add(md.month));
-    });
-    sharedTransactions.forEach(t => {
-      allMonths.add(t.date.substring(0, 7));
-    });
-    const sortedMonths = Array.from(allMonths).sort();
+  // ---- ALLOCATIONS SECTION ----
+
+  renderAllocationsMonthly() {
+    const { members } = this.state.data;
+    const sortedMonths = this.getAllSortedMonths();
+    const colors = ['#2563eb', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
 
     if (sortedMonths.length === 0) {
-      this.elements.cumulativeChartContainer.innerHTML = '<p class="text-muted">No data available for the selected time range.</p>';
-      this.elements.cumulativeChartCard.style.display = 'block';
+      this.elements.allocationsContainer.innerHTML = '<p class="text-muted">No allocation data for the selected time range.</p>';
+      this.elements.allocationsCard.style.display = 'block';
       return;
     }
 
-    // Get expenses from shared budget transactions grouped by month
+    // Summary stats
+    const totalContributed = members.reduce((sum, m) => sum + m.totals.contributed, 0);
+    const avgMonthly = sortedMonths.length > 0 ? totalContributed / sortedMonths.length : 0;
+
+    const memberSummaryHtml = members.map((m, i) => {
+      const pct = totalContributed > 0 ? (m.totals.contributed / totalContributed * 100) : 0;
+      return `
+        <div class="analytics-summary-stat clickable" onclick="Analytics.showTxnDetails('${Utils.escapeHtml(m.member.name)}', 'contributed')">
+          <span class="analytics-summary-label">${Utils.escapeHtml(m.member.name)}</span>
+          <span class="analytics-summary-value text-success">${Utils.formatCurrency(YnabClient.fromMilliunits(m.totals.contributed))}</span>
+          <span class="analytics-summary-sub">${pct.toFixed(0)}% of total</span>
+        </div>
+      `;
+    }).join('');
+
+    // Bar chart data
+    const chartData = sortedMonths.map(month => ({
+      label: this.formatMonthLabel(month, true),
+      values: members.map((m, i) => {
+        const md = m.monthlyData.find(d => d.month === month);
+        return {
+          name: m.member.name,
+          value: md?.contributed || 0,
+          color: colors[i % colors.length]
+        };
+      })
+    }));
+
+    const html = `
+      <div class="analytics-summary-row">
+        <div class="analytics-summary-stat">
+          <span class="analytics-summary-label">Total Contributed</span>
+          <span class="analytics-summary-value">${Utils.formatCurrency(YnabClient.fromMilliunits(totalContributed))}</span>
+        </div>
+        <div class="analytics-summary-stat">
+          <span class="analytics-summary-label">Monthly Average</span>
+          <span class="analytics-summary-value">${Utils.formatCurrency(YnabClient.fromMilliunits(avgMonthly))}</span>
+        </div>
+        ${memberSummaryHtml}
+      </div>
+      <div id="allocations-chart"></div>
+    `;
+
+    this.elements.allocationsContainer.innerHTML = html;
+    this.elements.allocationsCard.style.display = 'block';
+
+    const chartContainer = document.getElementById('allocations-chart');
+    if (chartContainer && chartData.length > 0) {
+      Charts.barChart(chartContainer, { data: chartData, height: 260 });
+    }
+  },
+
+  renderAllocationsCumulative() {
+    const { members } = this.state.data;
+    const sortedMonths = this.getAllSortedMonths();
+    const colors = ['#2563eb', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
+
+    if (sortedMonths.length === 0) {
+      this.elements.allocationsContainer.innerHTML = '<p class="text-muted">No allocation data for the selected time range.</p>';
+      this.elements.allocationsCard.style.display = 'block';
+      return;
+    }
+
+    // Build cumulative data
+    const cumulativeByMember = {};
+    members.forEach(m => { cumulativeByMember[m.member.name] = 0; });
+
+    const chartData = sortedMonths.map(month => {
+      const point = { month, monthLabel: this.formatMonthLabel(month, true) };
+      members.forEach(m => {
+        const md = m.monthlyData.find(d => d.month === month);
+        cumulativeByMember[m.member.name] += (md?.contributed || 0);
+        point[m.member.name] = cumulativeByMember[m.member.name];
+      });
+      // Use total contributions as "expenses" line for the cumulative chart
+      point.expenses = Object.values(cumulativeByMember).reduce((s, v) => s + v, 0);
+      return point;
+    });
+
+    // Summary
+    const memberTotals = members.map(m => ({
+      name: m.member.name,
+      total: cumulativeByMember[m.member.name]
+    }));
+
+    const memberSummaryHtml = memberTotals.map(m => `
+      <div class="analytics-summary-stat">
+        <span class="analytics-summary-label">${Utils.escapeHtml(m.name)}</span>
+        <span class="analytics-summary-value text-success">${Utils.formatCurrency(YnabClient.fromMilliunits(m.total))}</span>
+      </div>
+    `).join('');
+
+    const html = `
+      <div class="analytics-summary-row">
+        ${memberSummaryHtml}
+      </div>
+      <div id="allocations-cumulative-chart"></div>
+    `;
+
+    this.elements.allocationsContainer.innerHTML = html;
+    this.elements.allocationsCard.style.display = 'block';
+
+    // Render line chart using contributionChart (shows per-member lines)
+    const chartContainer = document.getElementById('allocations-cumulative-chart');
+    if (chartContainer && chartData.length > 0) {
+      // Build data in the format contributionChart expects
+      const lineData = sortedMonths.map((month, i) => ({
+        month,
+        monthLabel: this.formatMonthLabel(month, true),
+        members: members.map(m => {
+          const cumVal = chartData[i][m.member.name] || 0;
+          return { name: m.member.name, spent: 0, contributed: cumVal };
+        })
+      }));
+      Charts.contributionChart(chartContainer, {
+        data: lineData,
+        height: 260,
+        showLegend: true
+      });
+    }
+  },
+
+  // ---- EXPENSES SECTION ----
+
+  renderExpensesMonthly() {
+    const { members, sharedTransactions, sharedCategoryBreakdown } = this.state.data;
+    const sortedMonths = this.getAllSortedMonths();
+    const colors = ['#2563eb', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
+    const catColors = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
+
+    // Group expenses by month from shared transactions
     const expensesByMonth = {};
     sharedTransactions.forEach(t => {
       const month = t.date.substring(0, 7);
-      if (!expensesByMonth[month]) {
-        expensesByMonth[month] = 0;
-      }
+      if (!expensesByMonth[month]) expensesByMonth[month] = 0;
+      expensesByMonth[month] += Math.abs(t.amount);
+    });
+
+    const totalSpent = sharedTransactions.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    const avgMonthly = sortedMonths.length > 0 ? totalSpent / sortedMonths.length : 0;
+
+    // Per-member spending summary
+    const memberSpendingHtml = members.map((m, i) => `
+      <div class="analytics-summary-stat clickable" onclick="Analytics.showTxnDetails('${Utils.escapeHtml(m.member.name)}', 'spent')">
+        <span class="analytics-summary-label">${Utils.escapeHtml(m.member.name)}</span>
+        <span class="analytics-summary-value text-danger">${Utils.formatCurrency(YnabClient.fromMilliunits(m.totals.spent))}</span>
+      </div>
+    `).join('');
+
+    // Bar chart: total household spending per month
+    const chartData = sortedMonths.map(month => ({
+      label: this.formatMonthLabel(month, true),
+      values: [{
+        name: 'Expenses',
+        value: expensesByMonth[month] || 0,
+        color: '#ef4444'
+      }]
+    }));
+
+    // Category breakdown table
+    const sortedCategories = sharedCategoryBreakdown.slice(0, 12);
+    const catTotal = sortedCategories.reduce((sum, c) => sum + c.amount, 0);
+    const categoryRows = sortedCategories.map((cat, i) => {
+      const pct = catTotal > 0 ? (cat.amount / catTotal * 100) : 0;
+      const color = catColors[i % catColors.length];
+      return `
+        <tr>
+          <td><span class="category-dot" style="background: ${color}"></span> ${Utils.escapeHtml(cat.name)}</td>
+          <td class="text-right">${cat.count}</td>
+          <td class="text-right">${Utils.formatCurrency(YnabClient.fromMilliunits(cat.amount))}</td>
+          <td class="text-right">${pct.toFixed(1)}%</td>
+          <td><div class="percentage-bar-inline"><div class="percentage-bar-fill" style="width: ${pct}%; background: ${color}"></div></div></td>
+        </tr>
+      `;
+    }).join('');
+
+    const html = `
+      <div class="analytics-summary-row">
+        <div class="analytics-summary-stat">
+          <span class="analytics-summary-label">Total Spending</span>
+          <span class="analytics-summary-value text-danger">${Utils.formatCurrency(YnabClient.fromMilliunits(totalSpent))}</span>
+        </div>
+        <div class="analytics-summary-stat">
+          <span class="analytics-summary-label">Monthly Average</span>
+          <span class="analytics-summary-value">${Utils.formatCurrency(YnabClient.fromMilliunits(avgMonthly))}</span>
+        </div>
+        ${memberSpendingHtml}
+      </div>
+      <div id="expenses-chart"></div>
+      ${sortedCategories.length > 0 ? `
+        <div class="analytics-category-breakdown">
+          <h4>By Category</h4>
+          <div class="analytics-table-wrapper">
+            <table class="analytics-table">
+              <thead>
+                <tr>
+                  <th>Category</th>
+                  <th class="text-right">Txns</th>
+                  <th class="text-right">Amount</th>
+                  <th class="text-right">%</th>
+                  <th style="width: 120px"></th>
+                </tr>
+              </thead>
+              <tbody>${categoryRows}</tbody>
+            </table>
+          </div>
+        </div>
+      ` : ''}
+    `;
+
+    this.elements.expensesContainer.innerHTML = html;
+    this.elements.expensesCard.style.display = 'block';
+
+    const chartContainer = document.getElementById('expenses-chart');
+    if (chartContainer && chartData.length > 0) {
+      Charts.barChart(chartContainer, { data: chartData, height: 240 });
+    }
+  },
+
+  renderExpensesCumulative() {
+    const { members, sharedTransactions } = this.state.data;
+    const sortedMonths = this.getAllSortedMonths();
+
+    if (sortedMonths.length === 0) {
+      this.elements.expensesContainer.innerHTML = '<p class="text-muted">No expense data for the selected time range.</p>';
+      this.elements.expensesCard.style.display = 'block';
+      return;
+    }
+
+    // Group expenses by month
+    const expensesByMonth = {};
+    sharedTransactions.forEach(t => {
+      const month = t.date.substring(0, 7);
+      if (!expensesByMonth[month]) expensesByMonth[month] = 0;
       expensesByMonth[month] += Math.abs(t.amount);
     });
 
     // Build cumulative data
     let cumulativeExpenses = 0;
     const cumulativeByMember = {};
-    members.forEach(m => {
-      cumulativeByMember[m.member.name] = 0;
-    });
+    members.forEach(m => { cumulativeByMember[m.member.name] = 0; });
 
     const chartData = sortedMonths.map(month => {
-      // Get expenses from shared budget for this month
-      const monthExpenses = expensesByMonth[month] || 0;
-      cumulativeExpenses += monthExpenses;
-
-      // Get contributions per member for this month
-      const memberData = {};
+      cumulativeExpenses += (expensesByMonth[month] || 0);
+      const point = {
+        month,
+        monthLabel: this.formatMonthLabel(month, true),
+        expenses: cumulativeExpenses
+      };
       members.forEach(m => {
         const md = m.monthlyData.find(d => d.month === month);
         cumulativeByMember[m.member.name] += (md?.contributed || 0);
-        memberData[m.member.name] = cumulativeByMember[m.member.name];
+        point[m.member.name] = cumulativeByMember[m.member.name];
       });
-
-      return {
-        month,
-        monthLabel: this.formatMonthLabel(month, true),
-        expenses: cumulativeExpenses,
-        ...memberData
-      };
+      return point;
     });
 
-    // Calculate summary stats
     const totalExpenses = cumulativeExpenses;
-    const memberTotals = members.map(m => ({
-      name: m.member.name,
-      total: cumulativeByMember[m.member.name]
-    }));
+    const totalContributed = Object.values(cumulativeByMember).reduce((s, v) => s + v, 0);
 
-    // Render summary cards above the chart
-    const memberSummaryHtml = memberTotals.map(m => `
-      <div class="cumulative-stat">
-        <span class="cumulative-stat-label">${Utils.escapeHtml(m.name)}'s Contributions</span>
-        <span class="cumulative-stat-value">${Utils.formatCurrency(YnabClient.fromMilliunits(m.total))}</span>
-      </div>
-    `).join('');
-
-    const summaryHtml = `
-      <div class="cumulative-summary">
-        <div class="cumulative-stat">
-          <span class="cumulative-stat-label">Total Household Expenses</span>
-          <span class="cumulative-stat-value text-danger">${Utils.formatCurrency(YnabClient.fromMilliunits(totalExpenses))}</span>
+    const html = `
+      <div class="analytics-summary-row">
+        <div class="analytics-summary-stat">
+          <span class="analytics-summary-label">Total Expenses</span>
+          <span class="analytics-summary-value text-danger">${Utils.formatCurrency(YnabClient.fromMilliunits(totalExpenses))}</span>
         </div>
-        ${memberSummaryHtml}
+        <div class="analytics-summary-stat">
+          <span class="analytics-summary-label">Total Contributions</span>
+          <span class="analytics-summary-value text-success">${Utils.formatCurrency(YnabClient.fromMilliunits(totalContributed))}</span>
+        </div>
       </div>
-      <div id="cumulative-chart"></div>
+      <div id="expenses-cumulative-chart"></div>
     `;
 
-    this.elements.cumulativeChartContainer.innerHTML = summaryHtml;
-    this.elements.cumulativeChartCard.style.display = 'block';
+    this.elements.expensesContainer.innerHTML = html;
+    this.elements.expensesCard.style.display = 'block';
 
-    // Render the chart
-    const chartContainer = document.getElementById('cumulative-chart');
+    const chartContainer = document.getElementById('expenses-cumulative-chart');
     if (chartContainer && chartData.length > 0) {
       Charts.cumulativeExpensesChart(chartContainer, {
         data: chartData,
@@ -563,489 +808,138 @@ const Analytics = {
     }
   },
 
-  renderContributionHistory() {
-    const { members, start, end } = this.state.data;
+  // ---- BALANCING SECTION ----
 
-    // Collect all months from all members
-    const allMonths = new Set();
-    members.forEach(m => {
-      m.monthlyData.forEach(md => allMonths.add(md.month));
-    });
-    const sortedMonths = Array.from(allMonths).sort();
+  renderBalancingMonthly() {
+    const { members } = this.state.data;
+    const sortedMonths = this.getAllSortedMonths();
+    const colors = ['#2563eb', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
 
-    // Prepare chart data
+    // Summary stats
+    const totalTransfersIn = members.reduce((sum, m) => sum + m.totals.transfersIn, 0);
+    const totalTransfersOut = members.reduce((sum, m) => sum + m.totals.transfersOut, 0);
+    const numSettleUps = members.reduce((sum, m) => sum + m.transfers.length, 0);
+
+    const memberBalancingHtml = members.map((m, i) => {
+      const net = m.totals.netTransfers;
+      return `
+        <div class="analytics-summary-stat clickable" onclick="Analytics.showTxnDetails('${Utils.escapeHtml(m.member.name)}', 'transfers')">
+          <span class="analytics-summary-label">${Utils.escapeHtml(m.member.name)}</span>
+          <span class="analytics-summary-value ${net >= 0 ? 'text-success' : 'text-danger'}">${Utils.formatCurrency(YnabClient.fromMilliunits(net))}</span>
+          <span class="analytics-summary-sub">net</span>
+        </div>
+      `;
+    }).join('');
+
+    // Bar chart: net transfers per member per month
     const chartData = sortedMonths.map(month => ({
-      month,
-      monthLabel: this.formatMonthLabel(month, true),
-      members: members.map(m => {
-        const monthData = m.monthlyData.find(md => md.month === month);
+      label: this.formatMonthLabel(month, true),
+      values: members.map((m, i) => {
+        const md = m.monthlyData.find(d => d.month === month);
+        // Show absolute transfers out (settle-up payments)
         return {
           name: m.member.name,
-          spent: monthData?.spent || 0,
-          contributed: monthData?.contributed || 0
+          value: (md?.transfersOut || 0),
+          color: colors[i % colors.length]
         };
       })
     }));
 
-    // Build table rows
-    const rows = sortedMonths.map(month => {
-      const monthLabel = this.formatMonthLabel(month);
-      const memberCells = members.map(m => {
-        const monthData = m.monthlyData.find(md => md.month === month);
-        if (!monthData) return '<td class="text-muted">-</td><td class="text-muted">-</td>';
+    const html = `
+      <div class="analytics-summary-row">
+        <div class="analytics-summary-stat">
+          <span class="analytics-summary-label">Total Settled</span>
+          <span class="analytics-summary-value">${Utils.formatCurrency(YnabClient.fromMilliunits(totalTransfersOut))}</span>
+        </div>
+        <div class="analytics-summary-stat">
+          <span class="analytics-summary-label">Settle-ups</span>
+          <span class="analytics-summary-value">${Math.floor(numSettleUps / 2)}</span>
+        </div>
+        ${memberBalancingHtml}
+      </div>
+      <div id="balancing-chart"></div>
+    `;
 
-        return `
-          <td class="text-danger">${Utils.formatCurrency(YnabClient.fromMilliunits(monthData.spent))}</td>
-          <td class="text-success">${Utils.formatCurrency(YnabClient.fromMilliunits(monthData.contributed))}</td>
-        `;
-      }).join('');
+    this.elements.balancingContainer.innerHTML = html;
+    this.elements.balancingCard.style.display = 'block';
 
-      // Calculate totals for the row
-      const totalSpent = members.reduce((sum, m) => {
+    const chartContainer = document.getElementById('balancing-chart');
+    if (chartContainer && chartData.length > 0) {
+      Charts.barChart(chartContainer, { data: chartData, height: 240 });
+    }
+  },
+
+  renderBalancingCumulative() {
+    const { members } = this.state.data;
+    const sortedMonths = this.getAllSortedMonths();
+
+    if (sortedMonths.length === 0) {
+      this.elements.balancingContainer.innerHTML = '<p class="text-muted">No balancing data for the selected time range.</p>';
+      this.elements.balancingCard.style.display = 'block';
+      return;
+    }
+
+    // Build cumulative net transfers per member
+    const cumulativeNet = {};
+    members.forEach(m => { cumulativeNet[m.member.name] = 0; });
+
+    const chartData = sortedMonths.map(month => ({
+      month,
+      monthLabel: this.formatMonthLabel(month, true),
+      members: members.map(m => {
         const md = m.monthlyData.find(d => d.month === month);
-        return sum + (md?.spent || 0);
-      }, 0);
-      const totalContributed = members.reduce((sum, m) => {
-        const md = m.monthlyData.find(d => d.month === month);
-        return sum + (md?.contributed || 0);
-      }, 0);
+        cumulativeNet[m.member.name] += (md?.netTransfers || 0);
+        return {
+          name: m.member.name,
+          spent: 0,
+          contributed: cumulativeNet[m.member.name]
+        };
+      })
+    }));
 
+    const memberSummaryHtml = members.map(m => {
+      const net = cumulativeNet[m.member.name];
       return `
-        <tr>
-          <td class="month-label">${monthLabel}</td>
-          ${memberCells}
-          <td class="text-danger font-bold">${Utils.formatCurrency(YnabClient.fromMilliunits(totalSpent))}</td>
-          <td class="text-success font-bold">${Utils.formatCurrency(YnabClient.fromMilliunits(totalContributed))}</td>
-        </tr>
+        <div class="analytics-summary-stat">
+          <span class="analytics-summary-label">${Utils.escapeHtml(m.member.name)}</span>
+          <span class="analytics-summary-value ${net >= 0 ? 'text-success' : 'text-danger'}">${Utils.formatCurrency(YnabClient.fromMilliunits(net))}</span>
+          <span class="analytics-summary-sub">cumulative net</span>
+        </div>
       `;
     }).join('');
 
-    // Build header
-    const memberHeaders = members.map(m => `
-      <th colspan="2">${Utils.escapeHtml(m.member.name)}</th>
-    `).join('');
-    const memberSubHeaders = members.map(() => `
-      <th>Spent</th>
-      <th>Contrib.</th>
-    `).join('');
-
-    // Calculate grand totals
-    const grandTotalSpent = members.reduce((sum, m) => sum + m.totals.spent, 0);
-    const grandTotalContributed = members.reduce((sum, m) => sum + m.totals.contributed, 0);
-    const memberTotals = members.map(m => `
-      <td class="text-danger">${Utils.formatCurrency(YnabClient.fromMilliunits(m.totals.spent))}</td>
-      <td class="text-success">${Utils.formatCurrency(YnabClient.fromMilliunits(m.totals.contributed))}</td>
-    `).join('');
-
     const html = `
-      <div class="contribution-chart-container" id="contribution-chart"></div>
-      <div class="analytics-table-wrapper analytics-table-limited">
-        <table class="analytics-table">
-          <thead>
-            <tr>
-              <th rowspan="2">Month</th>
-              ${memberHeaders}
-              <th colspan="2">Total</th>
-            </tr>
-            <tr>
-              ${memberSubHeaders}
-              <th>Spent</th>
-              <th>Contrib.</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td><strong>Total</strong></td>
-              ${memberTotals}
-              <td class="text-danger font-bold">${Utils.formatCurrency(YnabClient.fromMilliunits(grandTotalSpent))}</td>
-              <td class="text-success font-bold">${Utils.formatCurrency(YnabClient.fromMilliunits(grandTotalContributed))}</td>
-            </tr>
-          </tfoot>
-        </table>
+      <div class="analytics-summary-row">
+        ${memberSummaryHtml}
       </div>
+      <div id="balancing-cumulative-chart"></div>
     `;
 
-    this.elements.contributionHistoryContainer.innerHTML = html;
-    this.elements.contributionHistoryCard.style.display = 'block';
+    this.elements.balancingContainer.innerHTML = html;
+    this.elements.balancingCard.style.display = 'block';
 
-    // Render the chart
-    const chartContainer = document.getElementById('contribution-chart');
+    const chartContainer = document.getElementById('balancing-cumulative-chart');
     if (chartContainer && chartData.length > 0) {
       Charts.contributionChart(chartContainer, {
         data: chartData,
-        height: 220,
+        height: 260,
         showLegend: true
       });
     }
   },
 
-  renderMoneyFlow() {
-    const { members, sharedCategoryBreakdown, memberCategorySpending } = this.state.data;
-    const colors = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+  // ---- HELPERS ----
 
-    // Build sources: each member who actually paid for things
-    const memberNames = members.map(m => m.member.name);
-    const allPayers = [...memberNames];
-    if (memberCategorySpending['Other']) {
-      allPayers.push('Other');
-    }
-
-    const sources = allPayers.map((name, i) => {
-      // Calculate total this member actually paid (sum across all categories)
-      const spending = memberCategorySpending[name] || {};
-      const totalPaid = Object.values(spending).reduce((sum, amt) => sum + amt, 0);
-      return {
-        name,
-        amount: totalPaid,
-        color: name === 'Other' ? '#94a3b8' : colors[i % colors.length]
-      };
-    }).filter(s => s.amount > 0);
-
-    const totalPaid = sources.reduce((sum, s) => sum + s.amount, 0);
-
-    // If no data, show message
-    if (sources.length === 0 || sharedCategoryBreakdown.length === 0) {
-      this.elements.moneyFlowContainer.innerHTML = '<p class="text-muted">No spending data available for the selected time range.</p>';
-      this.elements.moneyFlowCard.style.display = 'block';
-      return;
-    }
-
-    // Build targets with actual flows from members
-    const targets = sharedCategoryBreakdown
-      .slice(0, 10)
-      .map(cat => ({
-        name: cat.name,
-        amount: cat.amount,
-        flows: sources.map(s => {
-          const memberSpending = memberCategorySpending[s.name] || {};
-          const amountFromMember = memberSpending[cat.name] || 0;
-          return {
-            source: s.name,
-            amount: amountFromMember
-          };
-        }).filter(f => f.amount > 0)
-      }));
-
-    // Prepare sankey data
-    const sankeyData = {
-      sources,
-      targets
-    };
-
-    // Render the Sankey chart
-    this.elements.moneyFlowContainer.innerHTML = '<div id="sankey-chart-container"></div>';
-    this.elements.moneyFlowCard.style.display = 'block';
-
-    const sankeyContainer = document.getElementById('sankey-chart-container');
-    if (sankeyContainer) {
-      Charts.sankeyChart(sankeyContainer, {
-        data: sankeyData,
-        height: 400,
-        showLabels: true
-      });
-    }
-  },
-
-  renderSpendingBreakdown() {
-    const { sharedCategoryBreakdown } = this.state.data;
-
-    // Use categories from shared budget
-    const sortedCategories = sharedCategoryBreakdown.slice(0, 15);
-    const totalSpent = sortedCategories.reduce((sum, c) => sum + c.amount, 0);
-    const colors = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
-
-    // Build table
-    const rows = sortedCategories.map((cat, i) => {
-      const percentage = totalSpent > 0 ? (cat.amount / totalSpent * 100) : 0;
-      const color = colors[i % colors.length];
-
-      return `
-        <tr>
-          <td>
-            <span class="category-dot" style="background: ${color}"></span>
-            ${Utils.escapeHtml(cat.name)}
-          </td>
-          <td class="text-right">${cat.count}</td>
-          <td class="text-right">${Utils.formatCurrency(YnabClient.fromMilliunits(cat.amount))}</td>
-          <td class="text-right">${percentage.toFixed(1)}%</td>
-          <td>
-            <div class="percentage-bar-inline">
-              <div class="percentage-bar-fill" style="width: ${percentage}%; background: ${color}"></div>
-            </div>
-          </td>
-        </tr>
-      `;
-    }).join('');
-
-    const html = `
-      <div class="spending-summary">
-        <div class="spending-total">
-          <span class="spending-total-label">Total Spending</span>
-          <span class="spending-total-value">${Utils.formatCurrency(YnabClient.fromMilliunits(totalSpent))}</span>
-        </div>
-        <div class="spending-category-count">
-          <span class="spending-total-label">Categories</span>
-          <span class="spending-total-value">${sortedCategories.length}</span>
-        </div>
-      </div>
-      <div class="analytics-table-wrapper">
-        <table class="analytics-table">
-          <thead>
-            <tr>
-              <th>Category</th>
-              <th class="text-right">Txns</th>
-              <th class="text-right">Amount</th>
-              <th class="text-right">%</th>
-              <th style="width: 150px"></th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows}
-          </tbody>
-        </table>
-      </div>
-    `;
-
-    this.elements.spendingBreakdownContainer.innerHTML = html;
-    this.elements.spendingBreakdownCard.style.display = 'block';
-  },
-
-  renderMemberComparison() {
-    const { members } = this.state.data;
-
-    // Store transaction data for hover display
-    this._memberTxnData = {};
+  getAllSortedMonths() {
+    const { members, sharedTransactions } = this.state.data;
+    const allMonths = new Set();
     members.forEach(m => {
-      this._memberTxnData[m.member.name] = {
-        spent: m.transactions,
-        contributed: m.contributions,
-        reimbursements: m.reimbursements,
-        transfers: m.transfers
-      };
+      m.monthlyData.forEach(md => allMonths.add(md.month));
     });
-
-    const totalSpent = members.reduce((sum, m) => sum + m.totals.spent, 0);
-    const totalContributed = members.reduce((sum, m) => sum + m.totals.contributed, 0);
-    const colors = ['#2563eb', '#10b981', '#f59e0b'];
-
-    const memberCards = members.map((m, i) => {
-      const spentPct = totalSpent > 0 ? (m.totals.spent / totalSpent * 100) : 0;
-      const contribPct = totalContributed > 0 ? (m.totals.contributed / totalContributed * 100) : 0;
-      const color = colors[i % colors.length];
-
-      const avgMonthlySpent = m.monthlyData.length > 0
-        ? m.totals.spent / m.monthlyData.length
-        : 0;
-      const avgMonthlyContrib = m.monthlyData.length > 0
-        ? m.totals.contributed / m.monthlyData.length
-        : 0;
-
-      const memberName = Utils.escapeHtml(m.member.name);
-
-      // Net spending = spent - reimbursements
-      const netSpent = m.totals.spent - m.totals.reimbursements;
-
-      return `
-        <div class="member-analytics-card" style="border-left-color: ${color}">
-          <h4>${memberName}</h4>
-          <div class="member-analytics-stats">
-            <div class="member-stat clickable" onclick="Analytics.showTxnDetails('${memberName}', 'spent')">
-              <span class="member-stat-label">Gross Spent <small>(${m.transactions.length} txns)</small></span>
-              <span class="member-stat-value text-danger">${Utils.formatCurrency(YnabClient.fromMilliunits(m.totals.spent))}</span>
-            </div>
-            <div class="member-stat clickable" onclick="Analytics.showTxnDetails('${memberName}', 'reimbursements')">
-              <span class="member-stat-label">Reimbursements <small>(${m.reimbursements.length} txns)</small></span>
-              <span class="member-stat-value text-success">${Utils.formatCurrency(YnabClient.fromMilliunits(m.totals.reimbursements))}</span>
-            </div>
-            <div class="member-stat">
-              <span class="member-stat-label">Net Spent</span>
-              <span class="member-stat-value text-danger">${Utils.formatCurrency(YnabClient.fromMilliunits(netSpent))}</span>
-              <span class="member-stat-pct">${spentPct.toFixed(1)}% of household</span>
-            </div>
-            <div class="member-stat clickable" onclick="Analytics.showTxnDetails('${memberName}', 'contributed')">
-              <span class="member-stat-label">Contributed <small>(${m.contributions.length} txns)</small></span>
-              <span class="member-stat-value text-success">${Utils.formatCurrency(YnabClient.fromMilliunits(m.totals.contributed))}</span>
-              <span class="member-stat-pct">${contribPct.toFixed(1)}% of household</span>
-            </div>
-            <div class="member-stat clickable" onclick="Analytics.showTxnDetails('${memberName}', 'transfers')">
-              <span class="member-stat-label">Net Transfers <small>(${m.transfers.length} txns)</small></span>
-              <span class="member-stat-value ${m.totals.netTransfers >= 0 ? 'text-success' : 'text-danger'}">
-                ${Utils.formatCurrency(YnabClient.fromMilliunits(m.totals.netTransfers))}
-              </span>
-            </div>
-          </div>
-        </div>
-      `;
-    }).join('');
-
-    // Contribution split visualization
-    const splitBars = members.map((m, i) => {
-      const pct = totalContributed > 0 ? (m.totals.contributed / totalContributed * 100) : 0;
-      return `<div class="split-segment" style="width: ${pct}%; background: ${colors[i % colors.length]}" title="${m.member.name}: ${pct.toFixed(1)}%"></div>`;
-    }).join('');
-
-    const splitLegend = members.map((m, i) => {
-      const pct = totalContributed > 0 ? (m.totals.contributed / totalContributed * 100) : 0;
-      return `
-        <div class="split-legend-item">
-          <span class="split-legend-dot" style="background: ${colors[i % colors.length]}"></span>
-          ${Utils.escapeHtml(m.member.name)}: ${pct.toFixed(1)}%
-        </div>
-      `;
-    }).join('');
-
-    const html = `
-      <div class="contribution-split-section">
-        <h4>Contribution Split</h4>
-        <div class="contribution-split-bar">
-          ${splitBars}
-        </div>
-        <div class="contribution-split-legend">
-          ${splitLegend}
-        </div>
-      </div>
-      <div class="member-analytics-grid">
-        ${memberCards}
-      </div>
-    `;
-
-    this.elements.memberComparisonContainer.innerHTML = html;
-    this.elements.memberComparisonCard.style.display = 'block';
-  },
-
-  renderTrends() {
-    const { members } = this.state.data;
-
-    // Calculate month-over-month trends
-    const allMonthlyData = {};
-    members.forEach(m => {
-      m.monthlyData.forEach(md => {
-        if (!allMonthlyData[md.month]) {
-          allMonthlyData[md.month] = { spent: 0, contributed: 0 };
-        }
-        allMonthlyData[md.month].spent += md.spent;
-        allMonthlyData[md.month].contributed += md.contributed;
-      });
+    sharedTransactions.forEach(t => {
+      allMonths.add(t.date.substring(0, 7));
     });
-
-    const sortedMonths = Object.entries(allMonthlyData)
-      .sort((a, b) => a[0].localeCompare(b[0]));
-
-    // Calculate trends
-    const trends = [];
-
-    if (sortedMonths.length >= 2) {
-      const lastMonth = sortedMonths[sortedMonths.length - 1];
-      const prevMonth = sortedMonths[sortedMonths.length - 2];
-
-      const spendingChange = lastMonth[1].spent - prevMonth[1].spent;
-      const spendingPctChange = prevMonth[1].spent > 0
-        ? (spendingChange / prevMonth[1].spent * 100)
-        : 0;
-
-      const contribChange = lastMonth[1].contributed - prevMonth[1].contributed;
-      const contribPctChange = prevMonth[1].contributed > 0
-        ? (contribChange / prevMonth[1].contributed * 100)
-        : 0;
-
-      trends.push({
-        label: 'Spending vs Last Month',
-        value: spendingPctChange,
-        absolute: spendingChange,
-        type: spendingChange <= 0 ? 'good' : 'bad'
-      });
-
-      trends.push({
-        label: 'Contributions vs Last Month',
-        value: contribPctChange,
-        absolute: contribChange,
-        type: contribChange >= 0 ? 'good' : 'bad'
-      });
-    }
-
-    // Average calculations
-    if (sortedMonths.length > 0) {
-      const totalMonths = sortedMonths.length;
-      const avgSpending = sortedMonths.reduce((sum, [_, d]) => sum + d.spent, 0) / totalMonths;
-      const avgContrib = sortedMonths.reduce((sum, [_, d]) => sum + d.contributed, 0) / totalMonths;
-
-      trends.push({
-        label: 'Avg Monthly Spending',
-        value: null,
-        absolute: avgSpending,
-        type: 'neutral'
-      });
-
-      trends.push({
-        label: 'Avg Monthly Contributions',
-        value: null,
-        absolute: avgContrib,
-        type: 'neutral'
-      });
-    }
-
-    // Build trend cards
-    const trendCards = trends.map(t => {
-      let icon = '';
-      let changeText = '';
-
-      if (t.value !== null) {
-        icon = t.value > 0 ? '↑' : t.value < 0 ? '↓' : '→';
-        changeText = `<span class="trend-change ${t.type}">${icon} ${Math.abs(t.value).toFixed(1)}%</span>`;
-      }
-
-      return `
-        <div class="trend-card ${t.type}">
-          <div class="trend-label">${t.label}</div>
-          <div class="trend-value">${Utils.formatCurrency(YnabClient.fromMilliunits(t.absolute))}</div>
-          ${changeText}
-        </div>
-      `;
-    }).join('');
-
-    // Find top spending patterns
-    const payeeSpending = {};
-    members.forEach(m => {
-      m.transactions.forEach(t => {
-        if (t.amount >= 0) return;
-        const payee = t.payee_name || 'Unknown';
-        if (!payeeSpending[payee]) {
-          payeeSpending[payee] = { name: payee, amount: 0, count: 0 };
-        }
-        payeeSpending[payee].amount += Math.abs(t.amount);
-        payeeSpending[payee].count++;
-      });
-    });
-
-    const topPayees = Object.values(payeeSpending)
-      .sort((a, b) => b.amount - a.amount)
-      .slice(0, 5);
-
-    const topPayeesHtml = topPayees.map(p => `
-      <div class="top-payee-item">
-        <span class="top-payee-name">${Utils.escapeHtml(p.name)}</span>
-        <span class="top-payee-count">${p.count} txns</span>
-        <span class="top-payee-amount">${Utils.formatCurrency(YnabClient.fromMilliunits(p.amount))}</span>
-      </div>
-    `).join('');
-
-    const html = `
-      <div class="trends-grid">
-        ${trendCards}
-      </div>
-      <div class="top-payees-section">
-        <h4>Top Spending Recipients</h4>
-        <div class="top-payees-list">
-          ${topPayeesHtml}
-        </div>
-      </div>
-    `;
-
-    this.elements.trendsContainer.innerHTML = html;
-    this.elements.trendsCard.style.display = 'block';
+    return Array.from(allMonths).sort();
   },
 
   formatMonthLabel(monthStr, short = false) {

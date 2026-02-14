@@ -361,46 +361,49 @@
           <!-- Loading -->
           <div id="analytics-loading" class="loading" style="display: none;">Loading analytics data...</div>
 
-          <!-- Cumulative Chart -->
-          <div class="card" id="cumulative-chart-card" style="display: none;">
-            <h2>Cumulative Overview</h2>
-            <p class="help-text">Running totals of contributions, expenses, and balance over time.</p>
-            <div id="cumulative-chart-container"></div>
+          <!-- Section: Allocations -->
+          <div class="card" id="analytics-allocations-card" style="display: none;">
+            <div class="section-header">
+              <div>
+                <h2>Allocations</h2>
+                <p class="help-text">Monthly contributions to the shared budget by each member.</p>
+              </div>
+              <div class="chart-mode-toggle" data-section="allocations">
+                <button class="mode-btn active" data-mode="monthly">Monthly</button>
+                <button class="mode-btn" data-mode="cumulative">Cumulative</button>
+              </div>
+            </div>
+            <div id="analytics-allocations-container"></div>
           </div>
 
-          <!-- Contribution History -->
-          <div class="card" id="contribution-history-card" style="display: none;">
-            <h2>Monthly Breakdown</h2>
-            <p class="help-text">Monthly spending and contributions by member.</p>
-            <div id="contribution-history-container"></div>
+          <!-- Section: Expenses -->
+          <div class="card" id="analytics-expenses-card" style="display: none;">
+            <div class="section-header">
+              <div>
+                <h2>Expenses</h2>
+                <p class="help-text">Household spending from the shared budget.</p>
+              </div>
+              <div class="chart-mode-toggle" data-section="expenses">
+                <button class="mode-btn active" data-mode="monthly">Monthly</button>
+                <button class="mode-btn" data-mode="cumulative">Cumulative</button>
+              </div>
+            </div>
+            <div id="analytics-expenses-container"></div>
           </div>
 
-          <!-- Money Flow (Sankey Diagram) -->
-          <div class="card" id="money-flow-card" style="display: none;">
-            <h2>Money Flow</h2>
-            <p class="help-text">Visualize how contributions from each member flow into spending categories.</p>
-            <div id="money-flow-container"></div>
-          </div>
-
-          <!-- Spending by Category -->
-          <div class="card" id="spending-breakdown-card" style="display: none;">
-            <h2>Spending by Category</h2>
-            <p class="help-text">Breakdown of shared expenses by category.</p>
-            <div id="spending-breakdown-container"></div>
-          </div>
-
-          <!-- Member Comparison -->
-          <div class="card" id="member-comparison-card" style="display: none;">
-            <h2>Member Comparison</h2>
-            <p class="help-text">Compare spending and contributions across household members.</p>
-            <div id="member-comparison-container"></div>
-          </div>
-
-          <!-- Trends -->
-          <div class="card" id="trends-card" style="display: none;">
-            <h2>Trends & Patterns</h2>
-            <p class="help-text">Spending trends and top recipients.</p>
-            <div id="trends-container"></div>
+          <!-- Section: Balancing -->
+          <div class="card" id="analytics-balancing-card" style="display: none;">
+            <div class="section-header">
+              <div>
+                <h2>Balancing</h2>
+                <p class="help-text">Settle-up transfers between members.</p>
+              </div>
+              <div class="chart-mode-toggle" data-section="balancing">
+                <button class="mode-btn active" data-mode="monthly">Monthly</button>
+                <button class="mode-btn" data-mode="cumulative">Cumulative</button>
+              </div>
+            </div>
+            <div id="analytics-balancing-container"></div>
           </div>
         </div>
       </section>

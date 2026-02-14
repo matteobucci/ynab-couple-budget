@@ -303,9 +303,9 @@ const Charts = {
   formatShortCurrency(value) {
     const absValue = Math.abs(value) / 1000; // Convert from milliunits
     if (absValue >= 1000) {
-      return `$${(absValue / 1000).toFixed(1)}k`;
+      return `€${(absValue / 1000).toFixed(1)}k`;
     }
-    return `$${absValue.toFixed(0)}`;
+    return `€${absValue.toFixed(0)}`;
   },
 
   /**
