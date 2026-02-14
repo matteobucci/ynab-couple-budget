@@ -141,7 +141,22 @@ const Consistency = {
     this.state.settleModalOpen = true;
     this.elements.settleModal.style.display = 'flex';
     document.body.style.overflow = 'hidden';
-    this.updateBalancingPreview();
+    // Reset to phase 1
+    if (this.elements.settlePhase2) this.elements.settlePhase2.style.display = 'none';
+    if (this.elements.balancingFrom) this.elements.balancingFrom.value = '';
+    if (this.elements.balancingTo) this.elements.balancingTo.value = '';
+    if (this.elements.balancingAmount) this.elements.balancingAmount.value = '';
+    if (this.elements.balancingFromAccount) {
+      this.elements.balancingFromAccount.innerHTML = '<option value="">Select member first...</option>';
+      this.elements.balancingFromAccount.disabled = true;
+    }
+    if (this.elements.balancingToAccount) {
+      this.elements.balancingToAccount.innerHTML = '<option value="">Select member first...</option>';
+      this.elements.balancingToAccount.disabled = true;
+    }
+    if (this.elements.balancingMemo) this.elements.balancingMemo.value = '';
+    if (this.elements.balancingPreview) this.elements.balancingPreview.innerHTML = '';
+    if (this.elements.createBalancingBtn) this.elements.createBalancingBtn.disabled = true;
   },
 
   closeSettleModal() {
@@ -202,13 +217,43 @@ const Consistency = {
   async onFromMemberChange() {
     const fromIndex = this.elements.balancingFrom?.value;
     await this.loadMemberAccounts(fromIndex, this.elements.balancingFromAccount);
+    this.checkSettlePhaseTransition();
     this.updateBalancingPreview();
   },
 
   async onToMemberChange() {
     const toIndex = this.elements.balancingTo?.value;
     await this.loadMemberAccounts(toIndex, this.elements.balancingToAccount);
+    this.checkSettlePhaseTransition();
     this.updateBalancingPreview();
+  },
+
+  checkSettlePhaseTransition() {
+    const fromIndex = this.elements.balancingFrom?.value;
+    const toIndex = this.elements.balancingTo?.value;
+
+    if (fromIndex === '' || toIndex === '' || fromIndex === toIndex) return;
+
+    const config = Store.getConfig();
+    const fromMember = config.members[parseInt(fromIndex)];
+    const toMember = config.members[parseInt(toIndex)];
+    if (!fromMember || !toMember) return;
+
+    // Calculate suggested amount from contribution account balances
+    const fromBalance = this.state.accountBalances?.[fromMember.name] || 0;
+    const toBalance = this.state.accountBalances?.[toMember.name] || 0;
+    const difference = fromBalance - toBalance;
+    const suggestedAmount = Math.abs(difference) / 2;
+
+    // Auto-populate amount if not already set
+    if (!this.elements.balancingAmount?.value) {
+      this.elements.balancingAmount.value = suggestedAmount > 0 ? suggestedAmount.toFixed(2) : '';
+    }
+
+    // Show phase 2
+    if (this.elements.settlePhase2) {
+      this.elements.settlePhase2.style.display = '';
+    }
   },
 
   async loadMemberAccounts(memberIndex, selectElement) {
@@ -303,7 +348,6 @@ const Consistency = {
     const toAccount = toAccounts.find(a => a.id === toAccountId);
 
     const formattedAmount = Utils.formatCurrency(amount);
-    const exampleId = 'B-XXXXXX';
 
     // Get current contribution account balances
     const fromContribBalance = this.state.accountBalances?.[fromMember.name] || 0;
@@ -313,67 +357,27 @@ const Consistency = {
     const fromNewBalance = fromContribBalance - amount;
     const toNewBalance = toContribBalance + amount;
 
-    // Get category balances for budget adjustment info
-    const fromCategoryBal = this.state.categoryBalances?.[fromMember.name] || { shared: 0, balancing: 0 };
-    const toCategoryBal = this.state.categoryBalances?.[toMember.name] || { shared: 0, balancing: 0 };
-
-    // Check if budget adjustment will be needed
-    const fromNeedsBudgetMove = fromCategoryBal.balancing < amount;
-    const toNeedsBudgetMove = false; // Inflow doesn't need budget
-
     const html = `
-      <div class="balancing-preview-title">Preview: 4 linked transactions will be created</div>
-      <div class="balancing-preview-link-id">Link ID: <code>#${exampleId}#</code> (generated on create)</div>
-
-      <!-- Contribution Account Balance Preview -->
-      <div class="balancing-balance-preview">
-        <div class="balance-preview-title">Contribution Account Balances:</div>
-        <div class="balance-preview-row">
-          <span class="balance-preview-name">${Utils.escapeHtml(fromMember.name)}:</span>
-          <span class="balance-preview-current">${Utils.formatCurrency(fromContribBalance)}</span>
-          <span class="balance-preview-arrow">→</span>
-          <span class="balance-preview-new ${fromNewBalance >= 0 ? 'positive' : 'negative'}">${Utils.formatCurrency(fromNewBalance)}</span>
+      <div class="settle-preview-compact">
+        <div class="settle-preview-headline">
+          <strong>${Utils.escapeHtml(fromMember.name)}</strong> pays <strong>${Utils.escapeHtml(toMember.name)}</strong> <strong>${formattedAmount}</strong>
         </div>
-        <div class="balance-preview-row">
-          <span class="balance-preview-name">${Utils.escapeHtml(toMember.name)}:</span>
-          <span class="balance-preview-current">${Utils.formatCurrency(toContribBalance)}</span>
-          <span class="balance-preview-arrow">→</span>
-          <span class="balance-preview-new ${toNewBalance >= 0 ? 'positive' : 'negative'}">${Utils.formatCurrency(toNewBalance)}</span>
+        <div class="balancing-balance-preview">
+          <div class="balance-preview-title">Contribution account balances:</div>
+          <div class="balance-preview-row">
+            <span class="balance-preview-name">${Utils.escapeHtml(fromMember.name)}:</span>
+            <span class="balance-preview-current">${Utils.formatCurrency(fromContribBalance)}</span>
+            <span class="balance-preview-arrow">→</span>
+            <span class="balance-preview-new ${fromNewBalance >= 0 ? 'positive' : 'negative'}">${Utils.formatCurrency(fromNewBalance)}</span>
+          </div>
+          <div class="balance-preview-row">
+            <span class="balance-preview-name">${Utils.escapeHtml(toMember.name)}:</span>
+            <span class="balance-preview-current">${Utils.formatCurrency(toContribBalance)}</span>
+            <span class="balance-preview-arrow">→</span>
+            <span class="balance-preview-new ${toNewBalance >= 0 ? 'positive' : 'negative'}">${Utils.formatCurrency(toNewBalance)}</span>
+          </div>
         </div>
-      </div>
-
-      ${fromNeedsBudgetMove ? `
-      <div class="balancing-budget-warning">
-        <strong>Budget adjustment needed:</strong> ${Utils.escapeHtml(fromMember.name)}'s balancing category has ${Utils.formatCurrency(fromCategoryBal.balancing)} available.
-        ${Utils.formatCurrency(amount - fromCategoryBal.balancing)} will be moved from Shared Expenses (${Utils.formatCurrency(fromCategoryBal.shared)} available).
-      </div>
-      ` : ''}
-
-      <div class="balancing-preview-grid">
-        <div class="balancing-preview-item outflow">
-          <div class="preview-label">${Utils.escapeHtml(fromMember.name)}'s Personal Budget</div>
-          <div class="preview-account">Account: ${fromAccount ? Utils.escapeHtml(fromAccount.name) : 'Not selected'}</div>
-          <div class="preview-category">Category: Balancing</div>
-          <div class="preview-amount text-danger">-${formattedAmount}</div>
-        </div>
-        <div class="balancing-preview-item inflow">
-          <div class="preview-label">${Utils.escapeHtml(toMember.name)}'s Personal Budget</div>
-          <div class="preview-account">Account: ${toAccount ? Utils.escapeHtml(toAccount.name) : 'Not selected'}</div>
-          <div class="preview-category">Category: Balancing</div>
-          <div class="preview-amount text-success">+${formattedAmount}</div>
-        </div>
-        <div class="balancing-preview-item outflow">
-          <div class="preview-label">Shared Budget</div>
-          <div class="preview-account">Account: ${Utils.escapeHtml(fromMember.name)}'s Contribution</div>
-          <div class="preview-category">No category (account transfer)</div>
-          <div class="preview-amount text-danger">-${formattedAmount}</div>
-        </div>
-        <div class="balancing-preview-item inflow">
-          <div class="preview-label">Shared Budget</div>
-          <div class="preview-account">Account: ${Utils.escapeHtml(toMember.name)}'s Contribution</div>
-          <div class="preview-category">No category (account transfer)</div>
-          <div class="preview-amount text-success">+${formattedAmount}</div>
-        </div>
+        <div class="settle-preview-note">4 transactions will be created across personal and shared budgets</div>
       </div>
     `;
 
@@ -412,9 +416,9 @@ const Consistency = {
     const memo = this.appendIdToMemo(userMemo, linkId);
 
     const confirmed = await Utils.confirm({
-      title: 'Create Balancing Transactions',
+      title: 'Create Settle-Up Transactions',
       html: `
-        <p>4 linked transactions will be created with ID <code>#${Utils.escapeHtml(linkId)}#</code></p>
+        <p><strong>${Utils.escapeHtml(fromMember.name)}</strong> pays <strong>${Utils.escapeHtml(toMember.name)}</strong> <strong>${Utils.formatCurrency(amount)}</strong></p>
         <div class="confirm-detail-list">
           <div class="confirm-detail-item">
             <span class="detail-label">${Utils.escapeHtml(fromMember.name)} — Personal<br><small>${fromAccount?.name || 'N/A'}</small></span>
@@ -451,10 +455,7 @@ const Consistency = {
         const currentMonth = this.state.currentMonth;
 
         if (fromCategoryBal.shared < amountToMove) {
-          Utils.showToast(
-            `Not enough budget in Shared Expenses (${Utils.formatCurrency(fromCategoryBal.shared)}) to cover the shortfall (${Utils.formatCurrency(amountToMove)})`,
-            'error'
-          );
+          Utils.showToast('Insufficient budget to settle this amount', 'error');
           return;
         }
 
@@ -519,7 +520,7 @@ const Consistency = {
         approved: true
       });
 
-      Utils.showToast(`Balancing transactions created! Link ID: #${linkId}#`, 'success');
+      Utils.showToast('Settle-up transactions created successfully', 'success');
 
       // Reset form
       if (this.elements.balancingAmount) this.elements.balancingAmount.value = '';

@@ -283,20 +283,9 @@
 
                 <div class="balancing-inputs">
                   <div class="form-group">
-                    <label for="balancing-amount">Amount</label>
-                    <input type="number" id="balancing-amount" placeholder="0.00" step="0.01" min="0">
-                    <small>Amount to transfer</small>
-                  </div>
-                  <div class="form-group">
                     <label for="balancing-from">From</label>
                     <select id="balancing-from">
                       <option value="">Select member...</option>
-                    </select>
-                  </div>
-                  <div class="form-group">
-                    <label for="balancing-from-account">Account</label>
-                    <select id="balancing-from-account" disabled>
-                      <option value="">Select member first...</option>
                     </select>
                   </div>
                   <div class="form-group">
@@ -305,8 +294,21 @@
                       <option value="">Select member...</option>
                     </select>
                   </div>
+                </div>
+                <div id="settle-phase-2" class="balancing-inputs" style="display: none;">
                   <div class="form-group">
-                    <label for="balancing-to-account">Account</label>
+                    <label for="balancing-amount">Amount</label>
+                    <input type="number" id="balancing-amount" placeholder="0.00" step="0.01" min="0">
+                    <small>Amount to transfer</small>
+                  </div>
+                  <div class="form-group">
+                    <label for="balancing-from-account">From Account</label>
+                    <select id="balancing-from-account" disabled>
+                      <option value="">Select member first...</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label for="balancing-to-account">To Account</label>
                     <select id="balancing-to-account" disabled>
                       <option value="">Select member first...</option>
                     </select>

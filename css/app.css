@@ -2192,54 +2192,20 @@ select:focus {
   border: 1px solid var(--color-border);
 }
 
-.balancing-preview-title {
-  font-weight: 600;
+/* Compact Settle Preview */
+.settle-preview-compact {
+  margin-bottom: 0.5rem;
+}
+
+.settle-preview-headline {
+  font-size: 1rem;
   margin-bottom: 0.75rem;
-  color: var(--color-text-muted);
 }
 
-.balancing-preview-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 0.75rem;
-}
-
-@media (max-width: 768px) {
-  .balancing-preview-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-.balancing-preview-item {
-  padding: 0.75rem 1rem;
-  border-radius: var(--radius);
-  background: var(--color-bg);
-  border-left: 3px solid var(--color-border);
-}
-
-.balancing-preview-item.outflow {
-  border-left-color: var(--color-danger);
-}
-
-.balancing-preview-item.inflow {
-  border-left-color: var(--color-success);
-}
-
-.preview-label {
-  font-weight: 500;
-  font-size: 0.875rem;
-}
-
-.preview-category {
+.settle-preview-note {
   font-size: 0.75rem;
   color: var(--color-text-muted);
-  margin: 0.25rem 0;
-}
-
-.preview-amount {
-  font-size: 1.125rem;
-  font-weight: 700;
-  font-family: monospace;
+  margin-top: 0.75rem;
 }
 
 .balancing-preview-error {
@@ -2249,32 +2215,6 @@ select:focus {
   border-radius: var(--radius);
   color: #991b1b;
   font-size: 0.875rem;
-}
-
-.balancing-preview-link-id {
-  font-size: 0.8125rem;
-  color: var(--color-text-muted);
-  margin-bottom: 1rem;
-  padding: 0.5rem 0.75rem;
-  background: var(--color-bg);
-  border-radius: var(--radius);
-  border: 1px dashed var(--color-border);
-}
-
-.balancing-preview-link-id code {
-  font-family: monospace;
-  font-weight: 600;
-  color: var(--color-primary);
-  background: white;
-  padding: 0.125rem 0.375rem;
-  border-radius: 3px;
-}
-
-.preview-account {
-  font-size: 0.75rem;
-  color: var(--color-text);
-  margin: 0.125rem 0;
-  font-weight: 500;
 }
 
 /* Balance Preview in Settle Up */
@@ -2330,21 +2270,6 @@ select:focus {
 
 .balance-preview-new.negative {
   color: #dc2626;
-}
-
-/* Budget Warning in Settle Up */
-.balancing-budget-warning {
-  background: #fef3c7;
-  border: 1px solid #fcd34d;
-  border-radius: var(--radius);
-  padding: 0.75rem 1rem;
-  margin-bottom: 1rem;
-  font-size: 0.8rem;
-  color: #92400e;
-}
-
-.balancing-budget-warning strong {
-  color: #78350f;
 }
 
 /* Initial Loading Overlay */

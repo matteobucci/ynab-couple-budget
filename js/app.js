@@ -87,6 +87,7 @@ const App = {
       balancingDate: document.getElementById('balancing-date'),
       balancingMemo: document.getElementById('balancing-memo'),
       balancingPreview: document.getElementById('balancing-preview'),
+      settlePhase2: document.getElementById('settle-phase-2'),
       createBalancingBtn: document.getElementById('btn-create-balancing'),
 
       // Monthly Screen (allocation planner)
@@ -166,6 +167,7 @@ const App = {
       balancingDate: this.elements.balancingDate,
       balancingMemo: this.elements.balancingMemo,
       balancingPreview: this.elements.balancingPreview,
+      settlePhase2: this.elements.settlePhase2,
       createBalancingBtn: this.elements.createBalancingBtn
     });
 
