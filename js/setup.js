@@ -270,21 +270,32 @@ const Setup = {
     const wasConfigured = App.isConfigured();
     Store.updateConfig({ members });
 
+    // Update the setup Done button visibility
+    App.updateSetupDoneButton();
+
     // Update screen visibility immediately so the user doesn't need to switch tabs
     App.updateScreenVisibility();
 
-    // If the system just became fully configured, trigger data load for the active screen
+    // If the system just became fully configured, handle transition
     if (!wasConfigured && App.isConfigured()) {
-      const activeScreen = document.querySelector('.nav-btn.active')?.dataset.screen;
-      if (activeScreen === 'overview') {
+      // In setup mode, auto-close dialog and show app
+      if (App.state.settingsMode === 'setup') {
+        App.closeSettingsDialog();
         Overview.state.loaded = false;
         Overview.initScreen();
-      } else if (activeScreen === 'transactions') {
-        Consistency.initScreen();
-      } else if (activeScreen === 'monthly') {
-        Monthly.initScreen();
-      } else if (activeScreen === 'analytics') {
-        Analytics.initScreen();
+      } else {
+        // In settings mode, trigger data load for the active screen
+        const activeScreen = document.querySelector('.nav-btn.active')?.dataset.screen;
+        if (activeScreen === 'overview') {
+          Overview.state.loaded = false;
+          Overview.initScreen();
+        } else if (activeScreen === 'transactions') {
+          Consistency.initScreen();
+        } else if (activeScreen === 'monthly') {
+          Monthly.initScreen();
+        } else if (activeScreen === 'analytics') {
+          Analytics.initScreen();
+        }
       }
     }
   },

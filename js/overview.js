@@ -202,14 +202,14 @@ const Overview = {
       const personalTxns = (transactions.members?.[member.name] || []).filter(txn => {
         if (cutoffDate && txn.date < cutoffDate) return false;
         if (txn.deleted) return false;
-        return !LinkUtils.hasId(txn.memo);
+        return !TxnTypes.isLinked(txn);
       });
 
       const sharedTxns = (transactions.shared || []).filter(txn => {
         if (txn.account_id !== member.contributionAccountId) return false;
         if (cutoffDate && txn.date < cutoffDate) return false;
         if (txn.deleted) return false;
-        return !LinkUtils.hasId(txn.memo);
+        return !TxnTypes.isLinked(txn);
       });
 
       if (personalTxns.length > 0) {
@@ -363,7 +363,7 @@ const Overview = {
     const allSharedTxns = (transactions.shared || []).filter(txn => {
       if (txn.deleted) return false;
       if (cutoffDate && txn.date < cutoffDate) return false;
-      if (txn.transfer_account_id) return false; // Exclude transfers
+      if (TxnTypes.isBalancingTransfer(txn)) return false;
       return true;
     });
 
@@ -438,7 +438,7 @@ const Overview = {
       return true;
     });
     const currentMonthContributions = allSharedUnfiltered.filter(txn =>
-      txn.date.startsWith(currentMonth) && txn.amount > 0 && !txn.category_id && !txn.transfer_account_id
+      txn.date.startsWith(currentMonth) && TxnTypes.isContribution(txn) && !TxnTypes.isBalancingTransfer(txn)
     );
     const totalAllocated = currentMonthContributions.reduce((sum, txn) => sum + txn.amount, 0) / 1000;
     const remainingBudget = totalAllocated - currentMonthSpending;

@@ -8,6 +8,7 @@ const App = {
     budgets: [],
     budgetDetails: {},
     settingsOpen: false,
+    settingsMode: null, // 'setup' or 'settings'
     initialLoadComplete: false
   },
 
@@ -25,14 +26,27 @@ const App = {
 
   cacheElements() {
     this.elements = {
+      // Landing Page
+      landingPage: document.getElementById('landing-page'),
+      landingCtaTop: document.getElementById('landing-cta-top'),
+      landingCtaBottom: document.getElementById('landing-cta-bottom'),
+
+      // App chrome (hidden when landing is shown)
+      header: document.querySelector('.header'),
+      nav: document.querySelector('.nav'),
+      main: document.querySelector('.main'),
+
       // Initial Loading
       initialLoading: document.getElementById('initial-loading'),
       initialLoadingText: document.querySelector('#initial-loading p'),
 
-      // Settings Panel
+      // Settings Modal
       settingsBtn: document.getElementById('btn-settings'),
-      settingsPanel: document.getElementById('settings-panel'),
+      settingsModal: document.getElementById('settings-modal'),
+      settingsModalTitle: document.getElementById('settings-modal-title'),
       closeSettingsBtn: document.getElementById('btn-close-settings'),
+      settingsDoneActions: document.getElementById('settings-done-actions'),
+      settingsDoneBtn: document.getElementById('btn-settings-done'),
 
       // Connection
       connectionStatus: document.getElementById('connection-status'),
@@ -195,9 +209,18 @@ const App = {
   },
 
   bindEvents() {
-    // Settings panel toggle
-    this.elements.settingsBtn.addEventListener('click', () => this.toggleSettings());
-    this.elements.closeSettingsBtn.addEventListener('click', () => this.closeSettings());
+    // Landing page CTAs → open setup dialog over landing
+    this.elements.landingCtaTop?.addEventListener('click', () => {
+      this.openSetupDialog();
+    });
+    this.elements.landingCtaBottom?.addEventListener('click', () => {
+      this.openSetupDialog();
+    });
+
+    // Settings modal: gear icon → settings mode, close button
+    this.elements.settingsBtn.addEventListener('click', () => this.openSettingsDialog());
+    this.elements.closeSettingsBtn.addEventListener('click', () => this.closeSettingsDialog());
+    this.elements.settingsDoneBtn?.addEventListener('click', () => this.closeSettingsDialog());
 
     // API Key toggle
     this.elements.toggleKeyBtn.addEventListener('click', () => {
@@ -223,41 +246,83 @@ const App = {
       Utils.showToast('Cutoff date saved', 'success');
     });
 
-    // Close settings when clicking outside
-    document.addEventListener('click', (e) => {
-      if (this.state.settingsOpen &&
-          !this.elements.settingsPanel.contains(e.target) &&
-          !this.elements.settingsBtn.contains(e.target)) {
-        this.closeSettings();
+    // Close settings modal when clicking backdrop (settings mode only)
+    this.elements.settingsModal?.addEventListener('click', (e) => {
+      if (e.target === this.elements.settingsModal && this.state.settingsMode === 'settings') {
+        this.closeSettingsDialog();
       }
     });
 
-    // Close settings on Escape key
+    // Close settings on Escape key (settings mode only, or setup mode when configured)
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && this.state.settingsOpen) {
-        this.closeSettings();
+        if (this.state.settingsMode === 'settings' ||
+            (this.state.settingsMode === 'setup' && this.isConfigured())) {
+          this.closeSettingsDialog();
+        }
       }
     });
   },
 
-  toggleSettings() {
-    if (this.state.settingsOpen) {
-      this.closeSettings();
-    } else {
-      this.openSettings();
+  openSetupDialog() {
+    this.state.settingsMode = 'setup';
+    this.state.settingsOpen = true;
+    this.elements.settingsModal.dataset.mode = 'setup';
+    this.elements.settingsModalTitle.textContent = 'Set Up Your System';
+    this.elements.settingsModal.style.display = 'flex';
+    this.updateSetupDoneButton();
+    this.elements.apiKeyInput.focus();
+  },
+
+  openSettingsDialog() {
+    this.state.settingsMode = 'settings';
+    this.state.settingsOpen = true;
+    this.elements.settingsModal.dataset.mode = 'settings';
+    this.elements.settingsModalTitle.textContent = 'Settings';
+    this.elements.settingsDoneActions.style.display = 'none';
+    this.elements.settingsModal.style.display = 'flex';
+  },
+
+  closeSettingsDialog() {
+    // In setup mode, only allow closing if configured
+    if (this.state.settingsMode === 'setup' && !this.isConfigured()) return;
+
+    const wasSetup = this.state.settingsMode === 'setup';
+    this.state.settingsOpen = false;
+    this.state.settingsMode = null;
+    this.elements.settingsModal.style.display = 'none';
+    this.elements.settingsBtn.classList.remove('active');
+
+    // If closing from setup mode, transition landing → app
+    if (wasSetup) {
+      this.showApp();
     }
   },
 
-  openSettings() {
-    this.state.settingsOpen = true;
-    this.elements.settingsPanel.style.display = 'block';
-    this.elements.settingsBtn.classList.add('active');
+  updateSetupDoneButton() {
+    if (this.state.settingsMode !== 'setup') return;
+    const configured = this.isConfigured();
+    this.elements.settingsDoneActions.style.display = configured ? 'flex' : 'none';
   },
 
-  closeSettings() {
-    this.state.settingsOpen = false;
-    this.elements.settingsPanel.style.display = 'none';
-    this.elements.settingsBtn.classList.remove('active');
+  showLanding() {
+    if (this.elements.landingPage) this.elements.landingPage.style.display = 'block';
+    if (this.elements.header) this.elements.header.style.display = 'none';
+    if (this.elements.nav) this.elements.nav.style.display = 'none';
+    if (this.elements.main) this.elements.main.style.display = 'none';
+    // Close settings modal if open
+    if (this.elements.settingsModal) {
+      this.elements.settingsModal.style.display = 'none';
+      this.state.settingsOpen = false;
+      this.state.settingsMode = null;
+    }
+  },
+
+  showApp() {
+    if (this.elements.landingPage) this.elements.landingPage.style.display = 'none';
+    if (this.elements.header) this.elements.header.style.display = '';
+    if (this.elements.nav) this.elements.nav.style.display = '';
+    if (this.elements.main) this.elements.main.style.display = '';
   },
 
   restoreState() {
@@ -272,9 +337,9 @@ const App = {
       this.elements.apiKeyInput.value = apiKey;
       this.connect(true);
     } else {
-      // No API key - hide loading and show settings panel
+      // No API key - show landing page
       this.hideInitialLoading();
-      this.openSettings();
+      this.showLanding();
     }
   },
 
@@ -288,6 +353,10 @@ const App = {
     this.state.initialLoadComplete = true;
     if (this.elements.initialLoading) {
       this.elements.initialLoading.classList.add('hidden');
+    }
+    // If connected and not in setup mode, ensure app chrome is visible
+    if (this.state.connected && this.state.settingsMode !== 'setup') {
+      this.showApp();
     }
     // Show appropriate content based on configuration state
     this.updateScreenVisibility();
@@ -363,7 +432,7 @@ const App = {
       this.elements.connectBtn.disabled = false;
       this.hideInitialLoading();
       if (!silent) Utils.showToast(error.message, 'error');
-      if (silent) this.openSettings();
+      if (silent) this.openSettingsDialog();
     }
   },
 
@@ -405,6 +474,9 @@ const App = {
     if (this.elements.transactionsContent) {
       this.elements.transactionsContent.style.display = 'none';
     }
+
+    // Show landing page again
+    this.showLanding();
 
     Utils.showToast('Disconnected', 'info');
   },

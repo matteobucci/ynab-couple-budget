@@ -232,6 +232,10 @@ const Consistency = {
     const fromIndex = this.elements.balancingFrom?.value;
     const toIndex = this.elements.balancingTo?.value;
 
+    // Remove any existing direction hint
+    const existingHint = document.getElementById('settle-direction-hint');
+    if (existingHint) existingHint.remove();
+
     if (fromIndex === '' || toIndex === '' || fromIndex === toIndex) return;
 
     const config = Store.getConfig();
@@ -240,19 +244,33 @@ const Consistency = {
     if (!fromMember || !toMember) return;
 
     // Calculate suggested amount from contribution account balances
+    // Positive difference means "from" has more → they owe "to"
     const fromBalance = this.state.accountBalances?.[fromMember.name] || 0;
     const toBalance = this.state.accountBalances?.[toMember.name] || 0;
     const difference = fromBalance - toBalance;
-    const suggestedAmount = Math.abs(difference) / 2;
-
-    // Auto-populate amount if not already set
-    if (!this.elements.balancingAmount?.value) {
-      this.elements.balancingAmount.value = suggestedAmount > 0 ? suggestedAmount.toFixed(2) : '';
-    }
 
     // Show phase 2
     if (this.elements.settlePhase2) {
       this.elements.settlePhase2.style.display = '';
+    }
+
+    if (difference <= 0) {
+      // Wrong direction: "from" has less/equal balance, so "to" should pay "from"
+      this.elements.balancingAmount.value = '';
+
+      const hint = document.createElement('div');
+      hint.id = 'settle-direction-hint';
+      hint.className = 'settle-direction-hint';
+      hint.innerHTML = `Based on current balances, <strong>${Utils.escapeHtml(toMember.name)}</strong> owes <strong>${Utils.escapeHtml(fromMember.name)}</strong>. Swap From/To to settle in the correct direction.`;
+      this.elements.settlePhase2?.parentNode.insertBefore(hint, this.elements.settlePhase2);
+      return;
+    }
+
+    const suggestedAmount = difference / 2;
+
+    // Auto-populate amount if not already set
+    if (!this.elements.balancingAmount?.value) {
+      this.elements.balancingAmount.value = suggestedAmount > 0 ? suggestedAmount.toFixed(2) : '';
     }
   },
 
@@ -607,7 +625,7 @@ const Consistency = {
           memberName: member.name,
           memberId: member.budgetId,
           source: 'personal',
-          isBeforeCutoff: t.date < this.state.cutoffDate
+          isBeforeCutoff: TxnTypes.isBeforeCutoff(t, this.state.cutoffDate)
         }));
       }
 
@@ -623,7 +641,7 @@ const Consistency = {
           memberName: member.name,
           accountId: member.contributionAccountId,
           source: 'shared',
-          isBeforeCutoff: t.date < this.state.cutoffDate
+          isBeforeCutoff: TxnTypes.isBeforeCutoff(t, this.state.cutoffDate)
         }));
       }
 
@@ -1071,9 +1089,14 @@ const Consistency = {
     // Count only transactions AFTER cutoff date for unlinked counts
     const personalCount = (this.state.unlinkedPersonal[member] || []).filter(t => !t.isBeforeCutoff).length;
     const sharedCount = (this.state.unlinkedShared[member] || []).filter(t => !t.isBeforeCutoff).length;
-    const totalLinked = this.state.linkedPairs.filter(p =>
-      p.personal[member]?.length > 0 || p.shared.some(t => t.memberName === member)
-    ).length;
+    const totalLinked = this.state.linkedPairs.filter(p => {
+      const hasMember = p.personal[member]?.length > 0 || p.shared.some(t => t.memberName === member);
+      if (!hasMember) return false;
+      // Only count pairs with at least one post-cutoff transaction
+      const personalTxns = p.personal[member] || [];
+      const sharedTxns = p.shared.filter(t => t.memberName === member);
+      return personalTxns.some(t => !t.isBeforeCutoff) || sharedTxns.some(t => !t.isBeforeCutoff);
+    }).length;
 
     // Format cutoff date for display
     const cutoffFormatted = new Date(cutoffDate + 'T00:00:00').toLocaleDateString('en-US', {
@@ -2116,9 +2139,14 @@ const Consistency = {
 
   renderLinkedPairs() {
     const member = this.state.selectedMember;
-    const memberPairs = this.state.linkedPairs.filter(p =>
-      p.personal[member]?.length > 0 || p.shared.some(t => t.memberName === member)
-    );
+    const memberPairs = this.state.linkedPairs.filter(p => {
+      const hasMember = p.personal[member]?.length > 0 || p.shared.some(t => t.memberName === member);
+      if (!hasMember) return false;
+      // Only show pairs with at least one post-cutoff transaction
+      const personalTxns = p.personal[member] || [];
+      const sharedTxns = p.shared.filter(t => t.memberName === member);
+      return personalTxns.some(t => !t.isBeforeCutoff) || sharedTxns.some(t => !t.isBeforeCutoff);
+    });
 
     if (memberPairs.length === 0) {
       this.elements.linkedContainer.innerHTML = '<p class="text-muted">No linked transactions for this member.</p>';

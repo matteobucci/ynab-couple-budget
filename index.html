@@ -22,69 +22,251 @@
       </div>
     </header>
 
-    <!-- Settings Panel (collapsible) -->
-    <div id="settings-panel" class="settings-panel" style="display: none;">
-      <div class="settings-panel-header">
-        <h3>Settings</h3>
-        <button id="btn-close-settings" class="btn-close">&times;</button>
-      </div>
-      <div class="settings-panel-content">
-        <!-- API Connection -->
-        <div class="settings-section">
-          <h4>API Connection</h4>
-          <div class="form-group">
-            <label for="api-key">YNAB API Key</label>
-            <div class="input-group">
-              <input
-                type="password"
-                id="api-key"
-                placeholder="Enter your YNAB API key"
-                autocomplete="off"
-              >
-              <button id="toggle-key-visibility" class="btn-icon" title="Show/Hide">
-                <span class="icon">&#128065;</span>
-              </button>
+    <!-- Settings Modal (setup mode: no close, settings mode: closeable) -->
+    <div id="settings-modal" class="modal-overlay" style="display: none;">
+      <div class="modal modal-large settings-modal">
+        <div class="modal-header">
+          <h3 id="settings-modal-title">Settings</h3>
+          <button id="btn-close-settings" class="btn-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <!-- API Connection -->
+          <div class="settings-section">
+            <h4>API Connection</h4>
+            <div class="form-group">
+              <label for="api-key">YNAB API Key</label>
+              <div class="input-group">
+                <input
+                  type="password"
+                  id="api-key"
+                  placeholder="Enter your YNAB API key"
+                  autocomplete="off"
+                >
+                <button id="toggle-key-visibility" class="btn-icon" title="Show/Hide">
+                  <span class="icon">&#128065;</span>
+                </button>
+              </div>
+              <small>
+                Get your key from
+                <a href="https://app.ynab.com/settings/developer" target="_blank">YNAB Developer Settings</a>
+              </small>
             </div>
-            <small>
-              Get your key from
-              <a href="https://app.ynab.com/settings/developer" target="_blank">YNAB Developer Settings</a>
-            </small>
-          </div>
-          <div class="form-actions">
-            <button id="btn-connect" class="btn btn-primary btn-small">Connect</button>
-            <button id="btn-disconnect" class="btn btn-secondary btn-small" disabled>Disconnect</button>
-          </div>
-        </div>
-
-        <!-- Budget Binding -->
-        <div class="settings-section" id="binding-section" style="display: none;">
-          <h4>Budget Binding</h4>
-          <div class="form-group">
-            <label for="shared-budget">Shared (Household) Budget</label>
-            <select id="shared-budget">
-              <option value="">Select shared budget...</option>
-            </select>
+            <div class="form-actions">
+              <button id="btn-connect" class="btn btn-primary btn-small">Connect</button>
+              <button id="btn-disconnect" class="btn btn-secondary btn-small" disabled>Disconnect</button>
+            </div>
           </div>
 
-          <!-- Members Configuration -->
-          <div id="members-config" style="display: none;">
-            <label>Members</label>
-            <div id="members-list"></div>
-            <button id="btn-add-member" class="btn btn-secondary btn-small">+ Add Member</button>
-          </div>
-        </div>
+          <!-- Budget Binding -->
+          <div class="settings-section" id="binding-section" style="display: none;">
+            <h4>Budget Binding</h4>
+            <div class="form-group">
+              <label for="shared-budget">Shared (Household) Budget</label>
+              <select id="shared-budget">
+                <option value="">Select shared budget...</option>
+              </select>
+            </div>
 
-        <!-- Consistency Tool Settings -->
-        <div class="settings-section" id="consistency-settings-section" style="display: none;">
-          <h4>Consistency Tool</h4>
-          <div class="form-group">
-            <label for="consistency-cutoff">Cutoff Date</label>
-            <input type="date" id="consistency-cutoff" placeholder="YYYY-MM-DD">
-            <small>Only track transactions after this date. Useful for existing systems.</small>
+            <!-- Members Configuration -->
+            <div id="members-config" style="display: none;">
+              <label>Members</label>
+              <div id="members-list"></div>
+              <button id="btn-add-member" class="btn btn-secondary btn-small">+ Add Member</button>
+            </div>
+          </div>
+
+          <!-- Consistency Tool Settings -->
+          <div class="settings-section" id="consistency-settings-section" style="display: none;">
+            <h4>Consistency Tool</h4>
+            <div class="form-group">
+              <label for="consistency-cutoff">Cutoff Date</label>
+              <input type="date" id="consistency-cutoff" placeholder="YYYY-MM-DD">
+              <small>Only track transactions after this date. Useful for existing systems.</small>
+            </div>
+          </div>
+
+          <!-- Setup mode: Done button (shown only when configured) -->
+          <div id="settings-done-actions" class="modal-actions" style="display: none;">
+            <button id="btn-settings-done" class="btn btn-primary">Done</button>
           </div>
         </div>
       </div>
     </div>
+
+    <!-- Landing Page (shown when no API key) -->
+    <section id="landing-page" class="landing" style="display: none;">
+
+      <!-- Hero -->
+      <div class="landing-hero">
+        <h1 class="landing-title">YNAB Couple Budget</h1>
+        <p class="landing-tagline">A shared budget system for couples and households — fair, transparent, and in sync with YNAB.</p>
+        <button id="landing-cta-top" class="btn btn-primary landing-cta">Get Started</button>
+      </div>
+
+      <!-- How It Works -->
+      <div class="landing-section">
+        <h2 class="landing-section-title">How It Works</h2>
+        <p class="landing-section-subtitle">Each member keeps their own budget. A shared budget connects everyone.</p>
+        <div class="landing-diagram diagram-budgets">
+          <div class="diagram-budget diagram-person-a">
+            <div class="diagram-budget-icon">&#128100;</div>
+            <div class="diagram-budget-label">Personal Budget</div>
+            <div class="diagram-budget-detail">Member</div>
+          </div>
+          <div class="diagram-arrows-center">
+            <div class="diagram-arrow arrow-left">&larr;</div>
+            <div class="diagram-arrow arrow-right">&rarr;</div>
+          </div>
+          <div class="diagram-budget diagram-shared">
+            <div class="diagram-budget-icon">&#9878;</div>
+            <div class="diagram-budget-label">Shared Budget</div>
+            <div class="diagram-budget-detail">Household</div>
+          </div>
+          <div class="diagram-arrows-center">
+            <div class="diagram-arrow arrow-left">&larr;</div>
+            <div class="diagram-arrow arrow-right">&rarr;</div>
+          </div>
+          <div class="diagram-budget diagram-person-b">
+            <div class="diagram-budget-icon">&#128100;</div>
+            <div class="diagram-budget-label">Personal Budget</div>
+            <div class="diagram-budget-detail">Member</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Transaction Linking -->
+      <div class="landing-section landing-section-alt">
+        <h2 class="landing-section-title">Transaction Linking</h2>
+        <p class="landing-section-subtitle">When one member pays for a shared expense, two linked transactions keep everything consistent.</p>
+        <div class="landing-diagram diagram-linking">
+          <div class="diagram-step">
+            <div class="diagram-step-number">1</div>
+            <div class="diagram-step-content">
+              <div class="diagram-txn diagram-person-a">
+                <span class="diagram-txn-payee">Grocery Store</span>
+                <span class="diagram-txn-amount">-€85.00</span>
+                <span class="diagram-txn-cat">Shared Expenses</span>
+              </div>
+              <div class="diagram-txn-context">Member pays from personal budget</div>
+            </div>
+          </div>
+          <div class="diagram-link-arrow">
+            <div class="diagram-link-line"></div>
+            <div class="diagram-link-id">#A1B2C3#</div>
+          </div>
+          <div class="diagram-step">
+            <div class="diagram-step-number">2</div>
+            <div class="diagram-step-content">
+              <div class="diagram-txn diagram-shared">
+                <span class="diagram-txn-payee">Grocery Store</span>
+                <span class="diagram-txn-amount">-€85.00</span>
+                <span class="diagram-txn-cat">Groceries</span>
+              </div>
+              <div class="diagram-txn-context">Same expense in the shared budget</div>
+            </div>
+          </div>
+        </div>
+        <p class="landing-diagram-caption">A unique ID in the memo field connects the two transactions, so you always know what's been tracked.</p>
+      </div>
+
+      <!-- Monthly Contributions -->
+      <div class="landing-section">
+        <h2 class="landing-section-title">Monthly Contributions</h2>
+        <p class="landing-section-subtitle">Each member contributes a set amount every month. The system tracks it all.</p>
+        <div class="landing-diagram diagram-monthly">
+          <div class="diagram-flow-row">
+            <div class="diagram-flow-source diagram-person-a">
+              <div class="diagram-flow-label">Member A</div>
+              <div class="diagram-flow-amount">€500/mo</div>
+            </div>
+            <div class="diagram-flow-arrow">&rarr;</div>
+            <div class="diagram-flow-target diagram-shared">
+              <div class="diagram-flow-label">Shared Budget</div>
+              <div class="diagram-flow-sub">Contribution Account</div>
+            </div>
+          </div>
+          <div class="diagram-flow-row">
+            <div class="diagram-flow-source diagram-person-b">
+              <div class="diagram-flow-label">Member B</div>
+              <div class="diagram-flow-amount">€500/mo</div>
+            </div>
+            <div class="diagram-flow-arrow">&rarr;</div>
+            <div class="diagram-flow-target diagram-shared">
+              <div class="diagram-flow-label">Shared Budget</div>
+              <div class="diagram-flow-sub">Contribution Account</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Settle Up -->
+      <div class="landing-section landing-section-alt">
+        <h2 class="landing-section-title">Settle Up</h2>
+        <p class="landing-section-subtitle">When one person overpays, a balancing set of transactions squares things up.</p>
+        <div class="landing-diagram diagram-settle">
+          <div class="diagram-settle-row">
+            <div class="diagram-settle-txn diagram-person-a">
+              <div class="diagram-settle-label">A's Personal</div>
+              <div class="diagram-settle-desc">Outflow: -€50</div>
+            </div>
+            <div class="diagram-settle-arrow">&rarr;</div>
+            <div class="diagram-settle-txn diagram-shared">
+              <div class="diagram-settle-label">Shared Budget</div>
+              <div class="diagram-settle-desc">Transfer: A &rarr; B</div>
+            </div>
+            <div class="diagram-settle-arrow">&rarr;</div>
+            <div class="diagram-settle-txn diagram-person-b">
+              <div class="diagram-settle-label">B's Personal</div>
+              <div class="diagram-settle-desc">Inflow: +€50</div>
+            </div>
+          </div>
+          <p class="diagram-settle-note">Two transactions in personal budgets + a transfer in the shared budget = everything balanced.</p>
+        </div>
+      </div>
+
+      <!-- Prerequisites -->
+      <div class="landing-section">
+        <h2 class="landing-section-title">What You Need</h2>
+        <div class="landing-checklist">
+          <div class="landing-check-item">
+            <span class="landing-check-icon">&#10003;</span>
+            <div>
+              <strong>YNAB Account</strong>
+              <p>Each member needs an active YNAB subscription.</p>
+            </div>
+          </div>
+          <div class="landing-check-item">
+            <span class="landing-check-icon">&#10003;</span>
+            <div>
+              <strong>Personal Access Token</strong>
+              <p>Generate an API key from <a href="https://app.ynab.com/settings/developer" target="_blank">YNAB Developer Settings</a>.</p>
+            </div>
+          </div>
+          <div class="landing-check-item">
+            <span class="landing-check-icon">&#10003;</span>
+            <div>
+              <strong>Shared Budget</strong>
+              <p>Create a household budget that all members can access, with a contribution account per person.</p>
+            </div>
+          </div>
+          <div class="landing-check-item">
+            <span class="landing-check-icon">&#10003;</span>
+            <div>
+              <strong>Shared Expense Categories</strong>
+              <p>Add a "Shared Expenses" category in each personal budget to track outflows.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom CTA -->
+      <div class="landing-section landing-bottom-cta">
+        <h2 class="landing-section-title">Ready to Get Started?</h2>
+        <p class="landing-section-subtitle">Connect your YNAB account and configure your shared budget system in minutes.</p>
+        <button id="landing-cta-bottom" class="btn btn-primary landing-cta">Connect Your YNAB Account</button>
+      </div>
+
+    </section>
 
     <!-- Navigation -->
     <nav class="nav">
@@ -416,6 +598,7 @@
   <script src="js/storage.js"></script>
   <script src="js/ynab-client.js"></script>
   <script src="js/utils.js"></script>
+  <script src="js/txn-types.js"></script>
   <script src="js/store.js"></script>
   <script src="js/data-service.js"></script>
   <script src="js/charts.js"></script>

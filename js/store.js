@@ -292,7 +292,7 @@ const Store = {
         // Skip deleted transactions
         if (txn.deleted) return;
 
-        const id = LinkUtils.extractId(txn.memo);
+        const id = TxnTypes.getLinkId(txn);
         if (id) {
           if (!byId[id]) byId[id] = { personal: {}, shared: [] };
           if (!byId[id].personal[member.name]) byId[id].personal[member.name] = [];
@@ -316,7 +316,7 @@ const Store = {
         // Skip deleted transactions
         if (txn.deleted) return;
 
-        const id = LinkUtils.extractId(txn.memo);
+        const id = TxnTypes.getLinkId(txn);
         if (id) {
           if (!byId[id]) byId[id] = { personal: {}, shared: [] };
           byId[id].shared.push({ ...txn, memberName: member.name });

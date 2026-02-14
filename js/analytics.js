@@ -178,9 +178,7 @@ const Analytics = {
         sinceDate: start
       });
       const filteredSharedTxns = sharedBudgetTxns.filter(t =>
-        t.date >= start && t.date <= end &&
-        t.amount < 0 && // Only expenses (outflows)
-        !t.transfer_account_id // Exclude transfers between accounts
+        t.date >= start && t.date <= end && TxnTypes.isExpense(t)
       );
 
       // Get category breakdown from shared budget
@@ -228,15 +226,10 @@ const Analytics = {
       t.date >= startDate && t.date <= endDate
     );
 
-    // Separate by type:
-    // - Contributed: inflows (positive amounts) to "Ready to Assign" (no category) - monthly contributions
-    // - Reimbursements: inflows that ARE categorized - returns/refunds that offset spending
-    // - Spent: outflows (negative amounts) that are NOT transfers - actual spending
-    // - Transfers: transactions that ARE transfers - balancing between members
-    const contributions = filteredTxns.filter(t => t.amount > 0 && !t.category_id);
-    const reimbursements = filteredTxns.filter(t => t.amount > 0 && t.category_id && !t.transfer_account_id);
-    const spending = filteredTxns.filter(t => t.amount < 0 && !t.transfer_account_id);
-    const transfers = filteredTxns.filter(t => t.transfer_account_id);
+    // Classify transactions by type
+    const { contributions, reimbursements, expenses, balancingTransfers } = TxnTypes.classifySharedTransactions(filteredTxns);
+    const spending = expenses;
+    const transfers = balancingTransfers;
 
     // Group by month
     const monthlyData = this.groupByMonth(spending, contributions, transfers);
